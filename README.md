@@ -291,4 +291,4 @@ mapping. Highlights: guardrail-first input handling, parameterized Cypher,
 
 ## License
 
-MIT
+All Rights Reserved.
