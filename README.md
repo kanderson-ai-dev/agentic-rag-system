@@ -61,11 +61,11 @@ Raw scorecard (`evaluation/results/ragas_scorecard.json`, versioned in git):
 }
 ```
 
-> **Screenshots.** Drop your captures in `docs/screenshots/` and reference them
-> here (the scores come from the scorecard run and the LangSmith experiment):
->
+<!-- Screenshots — hidden until captures exist. Add files to docs/screenshots/ and
+     uncomment to show them on GitHub:
 > ![LangSmith experiment](docs/screenshots/langsmith-experiment.png)
 > ![Scorecard output](docs/screenshots/ragas-scorecard.png)
+-->
 
 Trend history is tracked in `evaluation/results/TREND.md` (generated with
 `python evaluation/run_ragas.py --report`).
@@ -98,9 +98,10 @@ question or answer content.
 | Average cost per query | ≤ $0.01 (documented context assumption) |
 | Cost attribution | 100% of queries recorded |
 
-> **Screenshot.** Drop `docs/screenshots/dashboard-cost.png` here:
->
+<!-- Screenshot — hidden until capture exists. Add docs/screenshots/dashboard-cost.png
+     and uncomment:
 > ![Dashboard — cost](docs/screenshots/dashboard-cost.png)
+-->
 
 ## Performance & Latency Monitoring
 
@@ -116,9 +117,10 @@ cost/latency is stored in the usage store. Live aggregates are available at:
 | p50 end-to-end latency | ≤ 3 s (excluding HITL pauses) |
 | p95 end-to-end latency | ≤ 6 s |
 
-> **Screenshot.** Drop `docs/screenshots/dashboard-latency.png` here:
->
+<!-- Screenshot — hidden until capture exists. Add docs/screenshots/dashboard-latency.png
+     and uncomment:
 > ![Dashboard — latency](docs/screenshots/dashboard-latency.png)
+-->
 
 ## Architecture
 
@@ -267,11 +269,14 @@ mapping. Highlights: guardrail-first input handling, parameterized Cypher,
 `SecretStr` config, secret-redacting logs, and CI that uses `pull_request` (never
 `pull_request_target`) so external forks cannot read repository secrets.
 
+<!-- Demo video — hidden until recorded. Suggested 30-60 s script: normal question →
+     blocked injection attempt → HITL escalation (approve / retry / override) →
+     dashboard showing cost and latency. Once recorded, restore this section:
+
 ## Demo Video
 
-> **Placeholder.** Suggested 30–60 s script: normal question → blocked injection
-> attempt → HITL escalation (approve / retry / override) → dashboard showing cost
-> and latency. Insert the recording here.
+![Demo](docs/screenshots/demo.gif)
+-->
 
 ## Known Limitations & Next Steps
 
