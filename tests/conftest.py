@@ -27,6 +27,14 @@ requires_neo4j = pytest.mark.skipif(
     not os.getenv("NEO4J_URI"),
     reason="requires NEO4J_URI",
 )
+requires_openai_key = pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="requires OPENAI_API_KEY",
+)
+requires_langsmith_key = pytest.mark.skipif(
+    not os.getenv("LANGCHAIN_API_KEY"),
+    reason="requires LANGCHAIN_API_KEY",
+)
 
 RELEVANT_DOC = Document(
     page_content="LangGraph orchestrates stateful multi-actor LLM applications.",
