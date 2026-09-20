@@ -9,6 +9,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.api.middleware import RequestIDMiddleware
 from app.api.v1.router import api_v1_router
 from app.api.v1.routes.health import router as health_router
 from app.core.config import get_settings
@@ -37,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("Self-RAG graph initialized successfully")
         except Exception as exc:  # noqa: BLE001 - degrade gracefully, don't crash startup
             app.state.graph_error = str(exc)
-            logger.error("Failed to initialize Self-RAG graph: %s", exc)
+            logger.error("Failed to initialize Self-RAG graph", error=str(exc))
 
         yield
 
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(RequestIDMiddleware)
     app.include_router(health_router)
     app.include_router(api_v1_router)
     return app

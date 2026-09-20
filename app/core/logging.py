@@ -1,49 +1,59 @@
-"""Structured logging configuration.
+"""Structured logging configuration using structlog.
 
-Emits JSON log lines so logs can be ingested by any log aggregation
-platform (CloudWatch, Datadog, ELK, etc.) without additional parsing rules.
+Emits JSON in production (for log aggregation) and a human-readable console
+format in development. A secret-redaction processor masks any field whose name
+looks like a credential before the record is written.
 """
 
-import json
-import logging
 import sys
-from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 
-class JsonFormatter(logging.Formatter):
-    """Format log records as single-line JSON objects."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, Any] = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
-
-        extra = getattr(record, "extra_fields", None)
-        if extra:
-            payload.update(extra)
-
-        return json.dumps(payload)
+_SENSITIVE_SUFFIXES = ("_key", "_token", "_secret")
+_SENSITIVE_SUBSTRINGS = ("password", "authorization")
 
 
-def configure_logging(level: str = "INFO") -> None:
-    """Configure the root logger to emit structured JSON logs to stdout."""
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JsonFormatter())
+def _redact_secrets(
+    _logger: Any, _method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Replace values of credential-like fields with ``***``."""
+    redacted: dict[str, Any] = {}
+    for key, value in event_dict.items():
+        lower = key.lower()
+        if lower.endswith(_SENSITIVE_SUFFIXES) or any(
+            token in lower for token in _SENSITIVE_SUBSTRINGS
+        ):
+            redacted[key] = "***"
+        else:
+            redacted[key] = value
+    return redacted
 
-    root_logger = logging.getLogger()
-    root_logger.handlers = [handler]
-    root_logger.setLevel(level.upper())
 
-    # Keep third-party loggers reasonably quiet by default.
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+def configure_logging(level: str = "INFO", environment: str = "development") -> None:
+    """Configure structlog with the renderer appropriate for the environment."""
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        _redact_secrets,
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+    renderer = (
+        structlog.processors.JSONRenderer()
+        if environment == "production"
+        else structlog.dev.ConsoleRenderer()
+    )
+
+    structlog.configure(
+        processors=[*shared_processors, renderer],
+        wrapper_class=structlog.make_filtering_bound_logger(level),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        cache_logger_on_first_use=True,
+    )
 
 
-def get_logger(name: str) -> logging.Logger:
-    """Return a module-level logger."""
-    return logging.getLogger(name)
+def get_logger(name: str = __name__) -> structlog.stdlib.BoundLogger:
+    """Return a module-level structlog logger."""
+    return structlog.get_logger(name)
