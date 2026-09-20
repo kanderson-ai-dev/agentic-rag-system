@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from langgraph.graph.state import CompiledStateGraph
 
 from app.api.v1.schemas import QueryRequest, QueryResponse
-from app.core.dependencies import get_graph
+from app.core.dependencies import get_graph, verify_jwt
 from app.graph.graph import initial_state
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 def query(
     payload: QueryRequest,
     graph: CompiledStateGraph = Depends(get_graph),
+    _: dict | None = Depends(verify_jwt),
 ) -> QueryResponse:
     """Invoke the compiled Self-RAG graph for a question.
 

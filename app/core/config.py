@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     neo4j_password: SecretStr | None = None
     knowledge_graph_path: str = "data/knowledge_graph.json"
 
+    # --- Authentication (single-user JWT, optional) ---
+    jwt_secret_key: SecretStr | None = None
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 30
+    auth_username: str | None = None
+    auth_password_hash: SecretStr | None = None
+
     # --- Self-RAG graph ---
     max_retries: int = 2
     retriever_top_k: int = 4
@@ -63,6 +70,8 @@ class Settings(BaseSettings):
         "langsmith_api_key",
         "pinecone_api_key",
         "neo4j_password",
+        "jwt_secret_key",
+        "auth_password_hash",
         mode="before",
     )
     @classmethod
@@ -85,6 +94,14 @@ class Settings(BaseSettings):
     def neo4j_password_value(self) -> str | None:
         """Return the plaintext Neo4j password, or `None` if not configured."""
         return self.neo4j_password.get_secret_value() if self.neo4j_password else None
+
+    def jwt_secret_key_value(self) -> str | None:
+        """Return the plaintext JWT signing secret, or `None` if not configured."""
+        return self.jwt_secret_key.get_secret_value() if self.jwt_secret_key else None
+
+    def auth_password_hash_value(self) -> str | None:
+        """Return the bcrypt password hash, or `None` if not configured."""
+        return self.auth_password_hash.get_secret_value() if self.auth_password_hash else None
 
     def configure_langsmith_env(self) -> None:
         """Propagate LangSmith settings to the environment variables that

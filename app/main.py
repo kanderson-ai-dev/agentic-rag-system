@@ -6,11 +6,14 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from langgraph.checkpoint.sqlite import SqliteSaver
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api.v1.router import api_v1_router
 from app.api.v1.routes.health import router as health_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.core.rate_limit import limiter
 from app.graph.graph import build_default_graph
 
 logger = get_logger(__name__)
@@ -48,6 +51,8 @@ def create_app() -> FastAPI:
         description="Agentic RAG & Knowledge Systems - a Self-RAG microservice.",
         lifespan=lifespan,
     )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.include_router(health_router)
     app.include_router(api_v1_router)
     return app

@@ -67,3 +67,18 @@ class HumanReviewRequest(BaseModel):
     override_answer: str | None = Field(
         default=None, description="Required when decision is 'override'."
     )
+
+
+class LoginRequest(BaseModel):
+    """Request body for `POST /api/v1/auth/login`."""
+
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+
+class LoginResponse(BaseModel):
+    """Response body for a successful login."""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int

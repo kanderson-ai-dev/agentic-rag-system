@@ -6,8 +6,15 @@ once during the application lifespan and exposed here as a thin dependency
 that reads them back from `app.state`.
 """
 
-from fastapi import HTTPException, Request
+import jwt
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langgraph.graph.state import CompiledStateGraph
+
+from app.core.config import Settings, get_settings
+from app.core.security import decode_access_token
+
+_bearer = HTTPBearer(auto_error=False)
 
 
 def get_graph(request: Request) -> CompiledStateGraph:
@@ -22,3 +29,23 @@ def get_graph(request: Request) -> CompiledStateGraph:
         error = getattr(request.app.state, "graph_error", "graph not initialized")
         raise HTTPException(status_code=503, detail=f"Service not ready: {error}")
     return graph
+
+
+def verify_jwt(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    settings: Settings = Depends(get_settings),
+) -> dict | None:
+    """Require a valid Bearer JWT when authentication is configured.
+
+    When `JWT_SECRET_KEY` is not configured the service remains open for local
+    quickstart (returns `None` without checking). Otherwise a missing or invalid
+    token raises 401.
+    """
+    if not settings.jwt_secret_key:
+        return None
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        return decode_access_token(settings, credentials.credentials)
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from exc

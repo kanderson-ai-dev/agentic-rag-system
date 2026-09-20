@@ -6,7 +6,12 @@ none of them perform network calls, so the suite never requires
 """
 
 import os
-from typing import Any
+
+# Disable LangSmith tracing for the test suite (no network calls, no noisy teardown).
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGSMITH_TRACING"] = "false"
+
+from typing import Any  # noqa: E402
 
 import pytest
 from langchain_core.documents import Document

@@ -9,7 +9,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from app.api.v1.schemas import HumanReviewRequest, QueryResponse
-from app.core.dependencies import get_graph
+from app.core.dependencies import get_graph, verify_jwt
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 
@@ -19,6 +19,7 @@ def review(
     thread_id: str,
     payload: HumanReviewRequest,
     graph: CompiledStateGraph = Depends(get_graph),
+    _: dict | None = Depends(verify_jwt),
 ) -> QueryResponse:
     """Resume an interrupted graph run with a human's decision."""
     config = {"configurable": {"thread_id": thread_id}}
