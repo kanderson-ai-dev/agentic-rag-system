@@ -2,12 +2,15 @@
 
 The graph shape is:
 
-    START -> retrieve -> grade_documents --(enough docs)--> generate -> END
-                              |--(retry available)--> transform_query -> retrieve
-                              '--(retries exhausted)--> human_review
-                                       |--(approve)--> generate -> END
-                                       |--(retry)-----> retrieve
-                                       '--(override)--> END
+    START -> guardrail --(blocked)--> error_output -> END
+                      '--(safe)-----> retrieve -> grade_documents
+                                           |--(enough docs)------> generate
+                                           |--(retry available)---> transform_query -> retrieve
+                                           '--(retries exhausted)--> human_review
+                                                    |--(approve)--> generate
+                                                    |--(retry)----> retrieve
+                                                    '--(override)--> output_guardrail
+    generate -> output_guardrail -> END
 """
 
 from typing import Any
@@ -17,12 +20,19 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from app.core.config import Settings
-from app.graph.edges import make_decide_to_generate, route_after_human_review
+from app.graph.edges import (
+    make_decide_to_generate,
+    route_after_guardrail,
+    route_after_human_review,
+)
 from app.graph.nodes import (
     Invokable,
+    make_error_output_node,
     make_generate_node,
     make_grade_documents_node,
+    make_guardrail_node,
     make_human_review_node,
+    make_output_guardrail_node,
     make_retrieve_node,
     make_transform_query_node,
 )
@@ -40,13 +50,22 @@ def build_graph(
     """Wire the Self-RAG nodes and edges into a compiled, runnable graph."""
     workflow = StateGraph(GraphState)
 
+    workflow.add_node("guardrail", make_guardrail_node())
+    workflow.add_node("error_output", make_error_output_node())
     workflow.add_node("retrieve", make_retrieve_node(retriever))
     workflow.add_node("grade_documents", make_grade_documents_node(grader_chain))
     workflow.add_node("generate", make_generate_node(generation_chain))
     workflow.add_node("transform_query", make_transform_query_node(rewriter_chain))
     workflow.add_node("human_review", make_human_review_node())
+    workflow.add_node("output_guardrail", make_output_guardrail_node())
 
-    workflow.add_edge(START, "retrieve")
+    workflow.add_edge(START, "guardrail")
+    workflow.add_conditional_edges(
+        "guardrail",
+        route_after_guardrail,
+        {"error_output": "error_output", "retrieve": "retrieve"},
+    )
+    workflow.add_edge("error_output", END)
     workflow.add_edge("retrieve", "grade_documents")
     workflow.add_conditional_edges(
         "grade_documents",
@@ -61,9 +80,14 @@ def build_graph(
     workflow.add_conditional_edges(
         "human_review",
         route_after_human_review,
-        {"generate": "generate", "retrieve": "retrieve", END: END},
+        {
+            "generate": "generate",
+            "retrieve": "retrieve",
+            "output_guardrail": "output_guardrail",
+        },
     )
-    workflow.add_edge("generate", END)
+    workflow.add_edge("generate", "output_guardrail")
+    workflow.add_edge("output_guardrail", END)
 
     return workflow.compile(checkpointer=checkpointer)
 
@@ -77,6 +101,8 @@ def initial_state(question: str) -> dict[str, Any]:
         "web_search_needed": False,
         "retry_count": 0,
         "human_decision": None,
+        "blocked": False,
+        "output_flagged": False,
     }
 
 

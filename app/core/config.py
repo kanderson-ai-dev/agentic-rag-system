@@ -8,6 +8,7 @@ evaluation scripts.
 
 from functools import lru_cache
 
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,7 +27,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # --- OpenAI / LLM ---
-    openai_api_key: str | None = None
+    openai_api_key: SecretStr | None = None
     chat_model_name: str = "gpt-4o-mini"
     chat_model_temperature: float = 0.0
     embedding_model_name: str = "text-embedding-3-small"
@@ -42,7 +43,21 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_project: str = "agentic-rag-system"
     langchain_endpoint: str = "https://api.smith.langchain.com"
-    langsmith_api_key: str | None = None
+    langsmith_api_key: SecretStr | None = None
+
+    @field_validator("openai_api_key", "langsmith_api_key", mode="before")
+    @classmethod
+    def _empty_str_to_none(cls, value: object) -> object:
+        """Treat empty strings as `None` so an unconfigured CI secret (which
+        arrives as an empty string) never reads as a real key.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    def openai_api_key_value(self) -> str | None:
+        """Return the plaintext OpenAI API key, or `None` if not configured."""
+        return self.openai_api_key.get_secret_value() if self.openai_api_key else None
 
     def configure_langsmith_env(self) -> None:
         """Propagate LangSmith settings to the environment variables that
@@ -55,7 +70,7 @@ class Settings(BaseSettings):
             os.environ["LANGCHAIN_PROJECT"] = self.langchain_project
             os.environ["LANGCHAIN_ENDPOINT"] = self.langchain_endpoint
             if self.langsmith_api_key:
-                os.environ["LANGCHAIN_API_KEY"] = self.langsmith_api_key
+                os.environ["LANGCHAIN_API_KEY"] = self.langsmith_api_key.get_secret_value()
 
 
 @lru_cache

@@ -1,13 +1,20 @@
 """Conditional edges for the Self-RAG graph.
 
-Both routing functions are pure functions of `GraphState`, which makes the
-correction-loop and human-in-the-loop logic trivial to unit test without any
-LLM calls or graph execution.
+Each routing function is a pure function of `GraphState`, which makes the
+guardrail, correction-loop and human-in-the-loop logic trivial to unit test
+without any LLM calls or graph execution.
 """
 
-from langgraph.graph import END
-
 from app.graph.state import GraphState
+
+
+def route_after_guardrail(state: GraphState) -> str:
+    """Route after the input guardrail.
+
+    - Blocked (prompt injection or empty after sanitization) -> `error_output`.
+    - Safe -> `retrieve`.
+    """
+    return "error_output" if state["blocked"] else "retrieve"
 
 
 def make_decide_to_generate(max_retries: int):
@@ -33,13 +40,13 @@ def make_decide_to_generate(max_retries: int):
 def route_after_human_review(state: GraphState) -> str:
     """Route after a human resolves an escalation.
 
-    - "override": the human supplied the final answer directly -> end.
+    - "override": the human supplied the final answer directly -> output guardrail.
     - "retry": the human supplied a revised question -> retrieve again.
     - "approve" (default): generate with the documents currently held.
     """
     decision = state.get("human_decision")
     if decision == "override":
-        return END
+        return "output_guardrail"
     if decision == "retry":
         return "retrieve"
     return "generate"

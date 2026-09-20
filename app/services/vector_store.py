@@ -31,6 +31,6 @@ def build_vector_store_service(settings: Settings) -> VectorStoreService:
 
     embeddings = OpenAIEmbeddings(
         model=settings.embedding_model_name,
-        api_key=settings.openai_api_key,
+        api_key=settings.openai_api_key_value(),
     )
     return VectorStoreService(embeddings=embeddings)

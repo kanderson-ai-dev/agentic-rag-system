@@ -26,6 +26,11 @@ class GraphState(TypedDict):
             ("approve", "retry" or "override") after a human-in-the-loop
             escalation triggered by `human_review_node`. `None` while no
             escalation has occurred yet.
+        blocked: Set by the input guardrail node when the question is flagged
+            as a prompt injection (or sanitizes to empty). The graph then
+            short-circuits to `error_output` without touching retrieval/LLM.
+        output_flagged: Set by the output guardrail node when the generated
+            answer leaks the system prompt or reflects injected instructions.
     """
 
     question: str
@@ -34,3 +39,5 @@ class GraphState(TypedDict):
     web_search_needed: bool
     retry_count: int
     human_decision: str | None
+    blocked: bool
+    output_flagged: bool

@@ -34,7 +34,7 @@ def build_chat_model(settings: Settings):
     return ChatOpenAI(
         model=settings.chat_model_name,
         temperature=settings.chat_model_temperature,
-        api_key=settings.openai_api_key,
+        api_key=settings.openai_api_key_value(),
     )
 
 

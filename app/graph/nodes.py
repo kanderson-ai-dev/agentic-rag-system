@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from langchain_core.documents import Document
 from langgraph.types import interrupt
 
+from app.graph.guardrails import detect_prompt_injection, sanitize_input, screen_output
 from app.graph.state import GraphState
 
 
@@ -118,3 +119,37 @@ def make_human_review_node():
         return updates
 
     return human_review_node
+
+
+def make_guardrail_node():
+    """Sanitize the input question and block it if a prompt injection is detected.
+
+    This runs first in the graph so malicious input never reaches the retriever
+    or the LLM (guardrail-first, OWASP LLM01/LLM04).
+    """
+
+    def guardrail_node(state: GraphState) -> dict:
+        question = sanitize_input(state["question"])
+        blocked = not question or detect_prompt_injection(question) is not None
+        return {"question": question, "blocked": blocked}
+
+    return guardrail_node
+
+
+def make_output_guardrail_node():
+    """Screen the final generation for system-prompt leakage or reflected injection."""
+
+    def output_guardrail_node(state: GraphState) -> dict:
+        flagged = screen_output(state["generation"]) is not None
+        return {"output_flagged": flagged}
+
+    return output_guardrail_node
+
+
+def make_error_output_node():
+    """Produce a generic refusal without touching retrieval or the LLM."""
+
+    def error_output_node(state: GraphState) -> dict:
+        return {"generation": "I'm sorry, but I can't help with that request."}
+
+    return error_output_node
