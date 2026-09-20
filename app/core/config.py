@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     auth_username: str | None = None
     auth_password_hash: SecretStr | None = None
 
+    # --- Cost tracking ---
+    cost_input_price_per_1m: float = 0.15  # gpt-4o-mini input price (USD per 1M tokens)
+    cost_output_price_per_1m: float = 0.60  # gpt-4o-mini output price (USD per 1M tokens)
+    usage_db_path: str = "data/usage.sqlite"
+
     # --- Self-RAG graph ---
     max_retries: int = 2
     retriever_top_k: int = 4

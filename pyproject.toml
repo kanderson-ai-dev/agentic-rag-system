@@ -23,6 +23,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "slowapi>=0.1.10",
     "structlog>=26.1.0",
+    "prometheus-fastapi-instrumentator>=8.1.0",
 ]
 
 [dependency-groups]

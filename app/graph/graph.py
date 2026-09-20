@@ -113,7 +113,7 @@ def initial_state(question: str) -> dict[str, Any]:
 
 
 def build_default_graph(
-    settings: Settings, checkpointer: BaseCheckpointSaver
+    settings: Settings, checkpointer: BaseCheckpointSaver, token_handler=None
 ) -> CompiledStateGraph:
     """Build the production graph, wired with real LLM and hybrid retrieval."""
     from app.services.graph_store import build_graph_store_service
@@ -125,7 +125,7 @@ def build_default_graph(
     )
     from app.services.vector_store import build_vector_store_service
 
-    llm = build_chat_model(settings)
+    llm = build_chat_model(settings, token_handler)
     vector_store_service = build_vector_store_service(settings)
     graph_store_service = build_graph_store_service(settings)
 

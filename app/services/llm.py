@@ -27,15 +27,18 @@ class GradeDocuments(BaseModel):
     )
 
 
-def build_chat_model(settings: Settings):
+def build_chat_model(settings: Settings, callback_handler=None):
     """Build the ChatOpenAI model used across all chains."""
     from langchain_openai import ChatOpenAI
 
-    return ChatOpenAI(
-        model=settings.chat_model_name,
-        temperature=settings.chat_model_temperature,
-        api_key=settings.openai_api_key_value(),
-    )
+    kwargs = {
+        "model": settings.chat_model_name,
+        "temperature": settings.chat_model_temperature,
+        "api_key": settings.openai_api_key_value(),
+    }
+    if callback_handler is not None:
+        kwargs["callbacks"] = [callback_handler]
+    return ChatOpenAI(**kwargs)
 
 
 def build_grader_chain(llm) -> Runnable:

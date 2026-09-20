@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from langchain_core.documents import Document
 from langgraph.types import interrupt
 
+from app.core.metrics import timed_node
 from app.graph.guardrails import detect_prompt_injection, sanitize_input, screen_output
 from app.graph.state import GraphState
 
@@ -38,6 +39,7 @@ def make_hybrid_retrieve_node(retriever: Invokable, graph_search_fn):
     into ``documents`` with per-document ``source``/``backend`` metadata.
     """
 
+    @timed_node("retrieve")
     def retrieve_node(state: GraphState) -> dict:
         question = state["question"]
         documents: list[Document] = list(retriever.invoke(question))
@@ -50,6 +52,7 @@ def make_hybrid_retrieve_node(retriever: Invokable, graph_search_fn):
 def make_grade_documents_node(grader_chain: Invokable):
     """Filter out documents that are not relevant to the question."""
 
+    @timed_node("grade_documents")
     def grade_documents_node(state: GraphState) -> dict:
         relevant_documents = []
         for document in state["documents"]:
@@ -67,6 +70,7 @@ def make_grade_documents_node(grader_chain: Invokable):
 def make_generate_node(generation_chain: Invokable):
     """Generate the final answer from the currently relevant documents."""
 
+    @timed_node("generate")
     def generate_node(state: GraphState) -> dict:
         context = "\n\n".join(document.page_content for document in state["documents"])
         answer = generation_chain.invoke({"context": context, "question": state["question"]})
@@ -78,6 +82,7 @@ def make_generate_node(generation_chain: Invokable):
 def make_transform_query_node(rewriter_chain: Invokable):
     """Rewrite the question to improve retrieval and count the attempt."""
 
+    @timed_node("transform_query")
     def transform_query_node(state: GraphState) -> dict:
         rewritten_question = rewriter_chain.invoke({"question": state["question"]})
         return {
@@ -103,6 +108,7 @@ def make_human_review_node():
         }
     """
 
+    @timed_node("human_review")
     def human_review_node(state: GraphState) -> dict:
         decision_payload = interrupt(
             {
@@ -135,6 +141,7 @@ def make_guardrail_node():
     or the LLM (guardrail-first, OWASP LLM01/LLM04).
     """
 
+    @timed_node("guardrail")
     def guardrail_node(state: GraphState) -> dict:
         question = sanitize_input(state["question"])
         blocked = not question or detect_prompt_injection(question) is not None
@@ -146,6 +153,7 @@ def make_guardrail_node():
 def make_output_guardrail_node():
     """Screen the final generation for system-prompt leakage or reflected injection."""
 
+    @timed_node("output_guardrail")
     def output_guardrail_node(state: GraphState) -> dict:
         flagged = screen_output(state["generation"]) is not None
         return {"output_flagged": flagged}
@@ -156,6 +164,7 @@ def make_output_guardrail_node():
 def make_error_output_node():
     """Produce a generic refusal without touching retrieval or the LLM."""
 
+    @timed_node("error_output")
     def error_output_node(state: GraphState) -> dict:
         return {"generation": "I'm sorry, but I can't help with that request."}
 
