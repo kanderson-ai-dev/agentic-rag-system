@@ -11,10 +11,15 @@ The graph shape is:
                                                     |--(retry)----> retrieve
                                                     '--(override)--> output_guardrail
     generate -> output_guardrail -> END
+
+The `retrieve` node performs hybrid retrieval: vector search (Pinecone/Chroma)
+combined with graph search (Neo4j/NetworkX).
 """
 
+from collections.abc import Callable
 from typing import Any
 
+from langchain_core.documents import Document
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -32,8 +37,8 @@ from app.graph.nodes import (
     make_grade_documents_node,
     make_guardrail_node,
     make_human_review_node,
+    make_hybrid_retrieve_node,
     make_output_guardrail_node,
-    make_retrieve_node,
     make_transform_query_node,
 )
 from app.graph.state import GraphState
@@ -44,6 +49,7 @@ def build_graph(
     grader_chain: Invokable,
     generation_chain: Invokable,
     rewriter_chain: Invokable,
+    graph_search_fn: Callable[[str], list[Document]],
     checkpointer: BaseCheckpointSaver,
     max_retries: int = 2,
 ) -> CompiledStateGraph:
@@ -52,7 +58,7 @@ def build_graph(
 
     workflow.add_node("guardrail", make_guardrail_node())
     workflow.add_node("error_output", make_error_output_node())
-    workflow.add_node("retrieve", make_retrieve_node(retriever))
+    workflow.add_node("retrieve", make_hybrid_retrieve_node(retriever, graph_search_fn))
     workflow.add_node("grade_documents", make_grade_documents_node(grader_chain))
     workflow.add_node("generate", make_generate_node(generation_chain))
     workflow.add_node("transform_query", make_transform_query_node(rewriter_chain))
@@ -109,7 +115,8 @@ def initial_state(question: str) -> dict[str, Any]:
 def build_default_graph(
     settings: Settings, checkpointer: BaseCheckpointSaver
 ) -> CompiledStateGraph:
-    """Build the production graph, wired with real LLM and vector store."""
+    """Build the production graph, wired with real LLM and hybrid retrieval."""
+    from app.services.graph_store import build_graph_store_service
     from app.services.llm import (
         build_chat_model,
         build_generation_chain,
@@ -120,12 +127,14 @@ def build_default_graph(
 
     llm = build_chat_model(settings)
     vector_store_service = build_vector_store_service(settings)
+    graph_store_service = build_graph_store_service(settings)
 
     return build_graph(
         retriever=vector_store_service.as_retriever(top_k=settings.retriever_top_k),
         grader_chain=build_grader_chain(llm),
         generation_chain=build_generation_chain(llm),
         rewriter_chain=build_rewriter_chain(llm),
+        graph_search_fn=graph_store_service.graph_search,
         checkpointer=checkpointer,
         max_retries=settings.max_retries,
     )

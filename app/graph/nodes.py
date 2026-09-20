@@ -30,11 +30,18 @@ def _binary_score(grading_result: Any) -> str:
     return grading_result["binary_score"]
 
 
-def make_retrieve_node(retriever: Invokable):
-    """Retrieve documents for the current question."""
+def make_hybrid_retrieve_node(retriever: Invokable, graph_search_fn):
+    """Retrieve documents from both the vector store and the graph store.
+
+    ``graph_search_fn`` is a callable `(term: str) -> list[Document]` provided
+    by the graph store service (Neo4j or NetworkX). Combined results are merged
+    into ``documents`` with per-document ``source``/``backend`` metadata.
+    """
 
     def retrieve_node(state: GraphState) -> dict:
-        documents: list[Document] = retriever.invoke(state["question"])
+        question = state["question"]
+        documents: list[Document] = list(retriever.invoke(question))
+        documents.extend(graph_search_fn(question))
         return {"documents": documents}
 
     return retrieve_node

@@ -8,6 +8,8 @@ venv/
 !.env.example
 data/*.sqlite
 data/*.sqlite-*
+data/chroma/
+data/knowledge_graph.json
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

@@ -5,7 +5,7 @@ from app.graph.nodes import (
     make_generate_node,
     make_grade_documents_node,
     make_human_review_node,
-    make_retrieve_node,
+    make_hybrid_retrieve_node,
     make_transform_query_node,
 )
 from tests.conftest import (
@@ -33,7 +33,7 @@ def _state(**overrides):
 
 def test_retrieve_node_returns_retriever_documents() -> None:
     retriever = FakeRetriever([RELEVANT_DOC])
-    node = make_retrieve_node(retriever)
+    node = make_hybrid_retrieve_node(retriever, graph_search_fn=lambda _q: [])
 
     result = node(_state())
 

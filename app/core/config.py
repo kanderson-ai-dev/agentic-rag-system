@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     chat_model_temperature: float = 0.0
     embedding_model_name: str = "text-embedding-3-small"
 
+    # --- Hybrid retrieval: vector store (Pinecone cloud / Chroma local) ---
+    pinecone_api_key: SecretStr | None = None
+    pinecone_index_name: str = "agentic-rag-system"
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+    chroma_persist_dir: str = "data/chroma"
+
+    # --- Hybrid retrieval: graph store (Neo4j cloud / NetworkX local) ---
+    neo4j_uri: str | None = None
+    neo4j_username: str = "neo4j"
+    neo4j_password: SecretStr | None = None
+    knowledge_graph_path: str = "data/knowledge_graph.json"
+
     # --- Self-RAG graph ---
     max_retries: int = 2
     retriever_top_k: int = 4
@@ -45,7 +58,13 @@ class Settings(BaseSettings):
     langchain_endpoint: str = "https://api.smith.langchain.com"
     langsmith_api_key: SecretStr | None = None
 
-    @field_validator("openai_api_key", "langsmith_api_key", mode="before")
+    @field_validator(
+        "openai_api_key",
+        "langsmith_api_key",
+        "pinecone_api_key",
+        "neo4j_password",
+        mode="before",
+    )
     @classmethod
     def _empty_str_to_none(cls, value: object) -> object:
         """Treat empty strings as `None` so an unconfigured CI secret (which
@@ -58,6 +77,14 @@ class Settings(BaseSettings):
     def openai_api_key_value(self) -> str | None:
         """Return the plaintext OpenAI API key, or `None` if not configured."""
         return self.openai_api_key.get_secret_value() if self.openai_api_key else None
+
+    def pinecone_api_key_value(self) -> str | None:
+        """Return the plaintext Pinecone API key, or `None` if not configured."""
+        return self.pinecone_api_key.get_secret_value() if self.pinecone_api_key else None
+
+    def neo4j_password_value(self) -> str | None:
+        """Return the plaintext Neo4j password, or `None` if not configured."""
+        return self.neo4j_password.get_secret_value() if self.neo4j_password else None
 
     def configure_langsmith_env(self) -> None:
         """Propagate LangSmith settings to the environment variables that

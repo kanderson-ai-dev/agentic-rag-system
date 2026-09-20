@@ -5,6 +5,7 @@ none of them perform network calls, so the suite never requires
 `OPENAI_API_KEY` or `LANGSMITH_API_KEY` to pass.
 """
 
+import os
 from typing import Any
 
 import pytest
@@ -12,6 +13,15 @@ from langchain_core.documents import Document
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.graph.graph import build_graph
+
+requires_pinecone = pytest.mark.skipif(
+    not os.getenv("PINECONE_API_KEY"),
+    reason="requires PINECONE_API_KEY",
+)
+requires_neo4j = pytest.mark.skipif(
+    not os.getenv("NEO4J_URI"),
+    reason="requires NEO4J_URI",
+)
 
 RELEVANT_DOC = Document(
     page_content="LangGraph orchestrates stateful multi-actor LLM applications.",
@@ -101,12 +111,17 @@ def fake_grader() -> FakeGrader:
     return FakeGrader()
 
 
+def _no_graph_results(_question: str) -> list[Document]:
+    return []
+
+
 def build_test_graph(
     documents: list[Document] | None = None,
     *,
     retriever: Any | None = None,
     max_retries: int = 2,
     relevant_keyword: str = "LangGraph",
+    graph_search_fn: Any | None = None,
 ):
     """Build a fully-stubbed, deterministic Self-RAG graph for tests."""
     return build_graph(
@@ -114,6 +129,7 @@ def build_test_graph(
         grader_chain=FakeGrader(relevant_keyword),
         generation_chain=FakeGenerationChain(),
         rewriter_chain=FakeRewriterChain(),
+        graph_search_fn=graph_search_fn if graph_search_fn is not None else _no_graph_results,
         checkpointer=InMemorySaver(),
         max_retries=max_retries,
     )
