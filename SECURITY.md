@@ -43,3 +43,15 @@ CI uses `on: pull_request` (never `pull_request_target`) and
 `permissions: contents: read`, so a pull request from an external fork cannot
 read repository secrets. All optional features degrade cleanly when their
 secrets are absent (no insecure fallback to a hardcoded key).
+
+## Known dependency advisories
+
+`pip-audit` runs in CI. Two notes on currently-handled findings:
+
+- **chromadb (1.5.9)** — the flagged advisories (PYSEC-2026-311/3813/3814/3815)
+  affect the Chroma **server** (multi-tenant RBAC and pre-auth code injection).
+  This project uses chromadb only as an **embedded local store** (no server, no
+  network exposure), so those vectors do not apply. No fixed release exists yet,
+  so they are allowlisted in the CI `pip-audit` step.
+- **langgraph-checkpoint-sqlite** — SQL-injection advisories
+  (PYSEC-2026-1528/1529/3636, CVE-2025-67644) were fixed by upgrading to 3.1.1.
