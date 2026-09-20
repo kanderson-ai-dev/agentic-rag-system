@@ -11,7 +11,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api.middleware import RequestIDMiddleware
+from app.api.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
 from app.api.v1.router import api_v1_router
 from app.api.v1.routes.health import router as health_router
 from app.core.config import get_settings
@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     Instrumentator().instrument(app).expose(app)
     app.include_router(health_router)
     app.include_router(api_v1_router)
