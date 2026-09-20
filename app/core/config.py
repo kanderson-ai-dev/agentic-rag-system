@@ -8,7 +8,7 @@ evaluation scripts.
 
 from functools import lru_cache
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,7 +63,10 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_project: str = "agentic-rag-system"
     langchain_endpoint: str = "https://api.smith.langchain.com"
-    langsmith_api_key: SecretStr | None = None
+    # `LANGCHAIN_API_KEY` is the standard LangChain/LangSmith env var name.
+    langsmith_api_key: SecretStr | None = Field(
+        default=None, validation_alias="LANGCHAIN_API_KEY"
+    )
 
     @field_validator(
         "openai_api_key",
