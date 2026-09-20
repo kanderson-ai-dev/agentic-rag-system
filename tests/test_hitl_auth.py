@@ -23,7 +23,7 @@ def _cleanup():
 
 def _settings(**overrides) -> Settings:
     base = {
-        "jwt_secret_key": "test-secret-key-with-at-least-32-bytes-of-entropy-123456",
+        "jwt_secret_key": "test-secret-key-for-local-tests-only",
         "auth_username": "admin",
         "auth_password_hash": PASSWORD_HASH,
     }

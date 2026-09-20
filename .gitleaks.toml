@@ -1,0 +1,9 @@
+# Gitleaks configuration. The repository must contain zero real secrets;
+# the allowlist below only silences clearly-dummy values used in test fixtures.
+
+[allowlist]
+  description = "Dummy test credentials (never real secrets)"
+  regexTarget = "line"
+  regexes = [
+    '''jwt_secret_key.*test-secret-key''',
+  ]

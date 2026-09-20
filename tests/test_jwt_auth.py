@@ -24,7 +24,7 @@ def _reset_limiter():
 
 def _settings(**overrides) -> Settings:
     base = {
-        "jwt_secret_key": "test-secret-key-with-at-least-32-bytes-of-entropy-123456",
+        "jwt_secret_key": "test-secret-key-for-local-tests-only",
         "jwt_algorithm": "HS256",
         "jwt_expire_minutes": 30,
         "auth_username": "admin",
