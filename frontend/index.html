@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentic RAG &amp; Knowledge Systems</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Agentic RAG &amp; Knowledge Systems</h1>
+    <span id="auth-status" class="badge">signed out</span>
+  </header>
+
+  <main class="layout">
+    <section id="login-panel" class="card">
+      <h2>Sign in</h2>
+      <form id="login-form">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required />
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Sign in</button>
+      </form>
+      <p id="login-error" class="error" hidden></p>
+    </section>
+
+    <section id="chat-panel" class="card" hidden>
+      <h2>Ask a question</h2>
+      <div id="messages" class="messages"></div>
+      <form id="chat-form">
+        <textarea id="question" rows="2" placeholder="Ask about LangGraph, Self-RAG, HITL..." required></textarea>
+        <button type="submit">Send</button>
+      </form>
+    </section>
+
+    <section id="dashboard-panel" class="card" hidden>
+      <h2>Dashboard</h2>
+      <div id="summary" class="summary"></div>
+      <h3>Recent requests</h3>
+      <table id="recent-table" class="recent">
+        <thead>
+          <tr>
+            <th>Time</th><th>Tokens</th><th>Cost</th><th>Latency</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <dialog id="review-modal">
+    <h2>Human review required</h2>
+    <p id="review-question" class="muted"></p>
+    <p id="review-docs" class="muted small"></p>
+    <div class="review-actions">
+      <button id="review-approve">Approve &amp; answer</button>
+      <button id="review-retry">Retry with revised question</button>
+      <button id="review-override">Override answer</button>
+    </div>
+    <textarea id="review-input" rows="3" placeholder="Revised question or manual answer" hidden></textarea>
+    <div class="review-actions" id="review-confirm-row" hidden>
+      <button id="review-confirm">Confirm</button>
+      <button id="review-cancel">Cancel</button>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

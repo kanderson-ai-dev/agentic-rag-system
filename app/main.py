@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite import SqliteSaver
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
@@ -63,6 +64,8 @@ def create_app() -> FastAPI:
     Instrumentator().instrument(app).expose(app)
     app.include_router(health_router)
     app.include_router(api_v1_router)
+    frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
     return app
 
 
