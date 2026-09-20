@@ -44,7 +44,9 @@ def _metric_inputs(question: str, answer: str, context: str) -> dict[str, dict[s
 
 def compute_scorecard() -> dict[str, float]:
     """Run the graph over the dataset and compute the four metrics."""
-    graph = build_default_graph(get_settings(), InMemorySaver())
+    settings = get_settings()
+    settings.configure_langsmith_env()
+    graph = build_default_graph(settings, InMemorySaver())
     sums = {name: 0.0 for name in METRICS}
     cases = build_dataset()
     for case in cases:

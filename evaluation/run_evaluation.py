@@ -17,7 +17,9 @@ from evaluation.evaluators import (
 
 @lru_cache
 def _graph():
-    return build_default_graph(get_settings(), InMemorySaver())
+    settings = get_settings()
+    settings.configure_langsmith_env()
+    return build_default_graph(settings, InMemorySaver())
 
 
 def _target(inputs: dict) -> dict:
