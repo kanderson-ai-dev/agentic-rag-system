@@ -1,5 +1,7 @@
 # Agentic RAG & Knowledge Systems
 
+![CI](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml/badge.svg)
+
 A **Self-RAG microservice** built with FastAPI and LangGraph, designed and operated
 under an **Evaluation Driven Development (EDD)** methodology: no change to prompts,
 retrieval, or graph architecture is considered "done" until it passes a set of
