@@ -110,7 +110,7 @@ httpx2==2.13.0
     # via
     #   langsmith
     #   openai
-httpx2-jsfetch==1.0 ; python_full_version >= '3.12' and sys_platform == 'emscripten'
+httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
     # via httpx2
 huggingface-hub==1.32.0
     # via tokenizers
@@ -195,13 +195,7 @@ neo4j==6.3.1
     # via agentic-rag-system
 networkx==3.6.1
     # via agentic-rag-system
-numpy==2.4.6 ; python_full_version < '3.12'
-    # via
-    #   chromadb
-    #   langchain-chroma
-    #   langchain-pinecone
-    #   onnxruntime
-numpy==2.5.3 ; python_full_version >= '3.12'
+numpy==2.5.3
     # via
     #   chromadb
     #   langchain-chroma

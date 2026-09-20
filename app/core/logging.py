@@ -32,7 +32,7 @@ def _redact_secrets(
 
 def configure_logging(level: str = "INFO", environment: str = "development") -> None:
     """Configure structlog with the renderer appropriate for the environment."""
-    shared_processors = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
