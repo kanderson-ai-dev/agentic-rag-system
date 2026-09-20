@@ -51,6 +51,48 @@ model change.
 Trend history is tracked in `evaluation/results/TREND.md` (generated with
 `python evaluation/run_ragas.py --report`).
 
+## Cost Control
+
+Every request's token usage and cost are captured via a LangChain callback and
+stored in SQLite, then surfaced through the dashboard and Prometheus. Cost is
+computed as:
+
+```text
+cost = (prompt_tokens / 1_000_000 × input_price) + (completion_tokens / 1_000_000 × output_price)
+```
+
+With `gpt-4o-mini` defaults (`$0.15` / 1M input, `$0.60` / 1M output), a query
+that consumes 2,000 prompt tokens and 500 completion tokens costs:
+
+```text
+(2,000 / 1,000,000 × $0.15) + (500 / 1,000,000 × $0.60)
+= $0.0003 + $0.0003
+= $0.0006
+```
+
+Prices are configurable via `COST_INPUT_PRICE_PER_1M` / `COST_OUTPUT_PRICE_PER_1M`
+(defaults target `gpt-4o-mini`). Only numeric metadata is persisted — never the
+question or answer content.
+
+| Metric | Target |
+|---|---|
+| Average cost per query | ≤ $0.01 (documented context assumption) |
+| Cost attribution | 100% of queries recorded |
+
+## Performance & Latency Monitoring
+
+Per-node latency is exposed as Prometheus histograms, and per-request
+cost/latency is stored in the usage store. Live aggregates are available at:
+
+- `GET /api/v1/dashboard/summary` — total cost, average latency, blocked/escalated counts.
+- `GET /metrics` — `agent_node_latency_seconds` (histogram, per node),
+  `agent_llm_cost_usd_total`, `agent_blocked_requests_total`, `agent_human_review_total`.
+
+| Metric | Target |
+|---|---|
+| p50 end-to-end latency | ≤ 3 s (excluding HITL pauses) |
+| p95 end-to-end latency | ≤ 6 s |
+
 ## Architecture
 
 ```mermaid
