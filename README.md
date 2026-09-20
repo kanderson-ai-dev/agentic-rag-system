@@ -35,18 +35,33 @@ model change.
 
 ## Evaluation Results
 
-> ⚠️ **Placeholder.** This table is regenerated from `evaluation/results/ragas_scorecard.json`
-> every time prompts/retrieval/model change. Run `python evaluation/run_ragas.py` (with
-> `OPENAI_API_KEY` and `LANGCHAIN_API_KEY` set) to produce real numbers, then replace this
-> section.
+Measured with `python evaluation/run_ragas.py` (Pinecone + NetworkX, `gpt-4o-mini`)
+on a 7-question dataset (6 in-domain + 1 out-of-domain).
 
 | Metric | Latest | Target | Status |
 |---|---|---|---|
-| `faithfulness` | — | ≥ 0.85 | ⚠️ pending |
-| `answer_relevancy` | — | ≥ 0.85 | ⚠️ pending |
-| `context_precision` | — | ≥ 0.75 | ⚠️ pending |
-| `context_recall` | — | ≥ 0.75 | ⚠️ pending |
-| LLM-as-judge (1–5) | — | ≥ 4.0 | ⚠️ pending |
+| `faithfulness` | **0.8571** | ≥ 0.85 | ✅ |
+| `answer_relevancy` | **0.8571** | ≥ 0.85 | ✅ |
+| `context_precision` | **0.8571** | ≥ 0.75 | ✅ |
+| `context_recall` | **0.8571** | ≥ 0.75 | ✅ |
+| LLM-as-judge (1–5) | — | ≥ 4.0 | ⚠️ pending (`run_evaluation.py`) |
+
+Raw scorecard (`evaluation/results/ragas_scorecard.json`, versioned in git):
+
+```json
+{
+  "faithfulness": 0.8571,
+  "answer_relevancy": 0.8571,
+  "context_precision": 0.8571,
+  "context_recall": 0.8571
+}
+```
+
+> **Screenshots.** Drop your captures in `docs/screenshots/` and reference them
+> here (the scores come from the scorecard run and the LangSmith experiment):
+>
+> ![LangSmith experiment](docs/screenshots/langsmith-experiment.png)
+> ![Scorecard output](docs/screenshots/ragas-scorecard.png)
 
 Trend history is tracked in `evaluation/results/TREND.md` (generated with
 `python evaluation/run_ragas.py --report`).
@@ -79,6 +94,10 @@ question or answer content.
 | Average cost per query | ≤ $0.01 (documented context assumption) |
 | Cost attribution | 100% of queries recorded |
 
+> **Screenshot.** Drop `docs/screenshots/dashboard-cost.png` here:
+>
+> ![Dashboard — cost](docs/screenshots/dashboard-cost.png)
+
 ## Performance & Latency Monitoring
 
 Per-node latency is exposed as Prometheus histograms, and per-request
@@ -92,6 +111,10 @@ cost/latency is stored in the usage store. Live aggregates are available at:
 |---|---|
 | p50 end-to-end latency | ≤ 3 s (excluding HITL pauses) |
 | p95 end-to-end latency | ≤ 6 s |
+
+> **Screenshot.** Drop `docs/screenshots/dashboard-latency.png` here:
+>
+> ![Dashboard — latency](docs/screenshots/dashboard-latency.png)
 
 ## Architecture
 
