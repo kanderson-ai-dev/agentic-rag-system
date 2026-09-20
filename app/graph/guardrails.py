@@ -1,9 +1,9 @@
 """Input and output guardrails for the Self-RAG graph (OWASP LLM01/LLM02).
 
-Implements the guardrail-first architecture from PLAN.md Fase 1: malicious or
-malformed input is detected and blocked *before* it reaches the retriever or
-the LLM, and the final generated output is screened for system-prompt leakage
-or reflected injected instructions before being returned.
+Implements the guardrail-first architecture: malicious or malformed input is
+detected and blocked *before* it reaches the retriever or the LLM, and the
+final generated output is screened for system-prompt leakage or reflected
+injected instructions before being returned.
 """
 
 import re

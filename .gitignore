@@ -19,9 +19,3 @@ build/
 htmlcov/
 .idea/
 .vscode/
-
-# OpenCode / AI agent tooling (local only, not part of the public repo)
-AGENTS.md
-PLAN.md
-OPENCODE_CHEATSHEET.md
-.opencode/
