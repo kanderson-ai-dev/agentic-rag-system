@@ -1,4 +1,6 @@
-# Agentic RAG & Knowledge Systems
+# Agentic RAG Core: Hybrid Retrieval Engine
+
+> **Hybrid Knowledge Retrieval System integrating Structured Graph Context (Neo4j) + Unstructured Dense Embeddings (Pinecone) orchestrated by Self-Correcting AI Agents.**
 
 ![CI](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml/badge.svg)
 
