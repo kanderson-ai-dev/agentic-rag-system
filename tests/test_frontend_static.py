@@ -58,3 +58,38 @@ def test_design_system_phase1_theme_toggle_and_tokens() -> None:
     # Theme persistence uses localStorage, not a session-only or hard-coded value.
     assert 'localStorage.setItem("theme", theme)' in js
     assert 'localStorage.getItem("theme")' in html
+
+
+def test_layout_phase2_responsive_grid_and_breakpoints() -> None:
+    """Phase 2: mobile-first grid layout with explicit breakpoints.
+
+    Asserts the main region uses a CSS Grid that cannot force horizontal
+    overflow (`minmax(0, 1fr)`), the header is sticky, explicit tablet/desktop
+    `min-width` breakpoints exist, and the wide "recent requests" table is
+    wrapped in a scroll container rather than overflowing the page at 320px.
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    css = client.get("/styles.css").text
+    client.close()
+
+    # Main content is a single-column, overflow-safe grid.
+    assert ".layout" in css
+    assert "display: grid" in css
+    assert "grid-template-columns: minmax(0, 1fr)" in css
+
+    # The header stays fixed to the top while the content scrolls beneath it.
+    assert "position: sticky" in css
+
+    # Explicit mobile-first breakpoints for tablet and desktop (min-width,
+    # not max-width, so base rules target the smallest screen).
+    assert "--bp-tablet: 640px" in css
+    assert "--bp-desktop: 1024px" in css
+    assert "@media (min-width: 640px)" in css
+    assert "@media (min-width: 1024px)" in css
+
+    # The dashboard table is wrapped so it scrolls inside its own container
+    # and never forces a horizontal page scroll on narrow viewports.
+    assert 'class="table-wrap"' in html
+    assert ".table-wrap" in css
+    assert "overflow-x: auto" in css

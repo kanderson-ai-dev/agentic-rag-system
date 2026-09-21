@@ -8,7 +8,7 @@ Servido por FastAPI vía `StaticFiles` montado en `/` (ver `app/main.py`).
 | Archivo      | Responsabilidad |
 | ------------ | ------------------------------------------------------------------ |
 | `index.html` | Marcado semántico + script inline que aplica el tema antes del primer *paint* (anti-FOUC). |
-| `styles.css` | Design system: tokens, reset, componentes base, temas claro/oscuro, responsive. |
+| `styles.css` | Design system: tokens, reset, componentes base, temas claro/oscuro, layout responsive. |
 | `app.js`     | Lógica: auth gate, chat, modal de revisión humana (HITL), dashboard, toggle de tema. |
 
 ## Design system (tokens)
@@ -41,8 +41,29 @@ Dos temas definidos como bloques de tokens: `[data-theme="dark"]` (por defecto) 
 - **Inputs / textarea**: estados `:focus` con anillo de acento.
 - **Cards**: `.card`.
 - **Badges**: `.badge` (+ `.signed-in`).
-- **Tablas**: `table.recent`.
+- **Tablas**: `table.recent` (envuelta en `.table-wrap` para scroll horizontal
+  propio en pantallas estrechas, sin romper el scroll de la página).
 - **Stats**: `.stat` (+ `.quality-stat.pass/.fail`).
+
+## Layout responsive (mobile-first)
+
+El layout es **mobile-first**: los estilos base apuntan a la pantalla más pequeña
+(móvil 320px) y se mejoran progresivamente con `min-width` media queries. No hay
+scroll horizontal en ningún tamaño.
+
+| Breakpoint | Token CSS               | Qué cambia |
+| ---------- | ----------------------- | ---------------------------------------------------------- |
+| Móvil      | (base)                  | `.layout` a una columna, gutters compactos, header sticky con título truncado (ellipsis). |
+| Tablet     | `--bp-tablet` (≥640px)  | Gutters y padding de cards más amplios; padding del header. |
+| Escritorio | `--bp-desktop` (≥1024px)| Formulario de login acotado, stats en más columnas. |
+
+Convenciones de jerarquía y espaciado:
+
+- Todo el contenido vive en `.layout` (CSS Grid, `minmax(0, 1fr)` para evitar
+  desbordes), alineado y centrado con `max-width: var(--max-width)`.
+- El header es `position: sticky` con `z-index` sobre el contenido.
+- Las tablas usan `.table-wrap` (`overflow-x: auto`) en vez de forzar scroll de
+  página en móvil.
 
 ## Convenciones
 
