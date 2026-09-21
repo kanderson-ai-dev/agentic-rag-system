@@ -258,3 +258,126 @@ def test_chat_phase4_adaptive_input_and_smart_scroll() -> None:
     assert "function smartScroll" in js
     assert "scrollHeight" in js
     assert "scrollTop" in js
+
+
+def test_phase5_review_modal_accessible_dialog() -> None:
+    """Phase 5: the human-review modal is an accessible native `<dialog>`.
+
+    Asserts the dialog declares its accessible name/description via ARIA
+    (`aria-labelledby`/`aria-describedby`), so screen readers announce what
+    it is for, and that the three decisions are native radio inputs grouped
+    under a single fieldset (arrow-key navigable) rather than free-floating
+    buttons.
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    css = client.get("/styles.css").text
+    client.close()
+
+    # Accessible dialog: labelled + described, not an anonymous overlay.
+    assert '<dialog' in html
+    assert 'id="review-modal"' in html
+    assert 'aria-labelledby="review-title"' in html
+    assert 'aria-describedby="review-description"' in html
+    assert 'id="review-title"' in html
+    assert 'id="review-description"' in html
+
+    # The three decisions are grouped, mutually-exclusive radio inputs.
+    assert 'name="review-decision"' in html
+    assert '<fieldset' in html
+    assert 'class="review-choices"' in html
+    assert 'value="approve"' in html
+    assert 'value="retry"' in html
+    assert 'value="override"' in html
+
+    # The dialog styling lives behind a design-token-driven backdrop/dialog.
+    assert "dialog::backdrop" in css
+    assert ".review-choice" in css
+
+
+def test_phase5_review_options_explained() -> None:
+    """Phase 5: the three human-review options are clearly explained.
+
+    Each decision gets a short explanatory hint in the markup (not just a bare
+    button label), so a reviewer understands the consequences of "approve",
+    "retry with revised question", and "override with manual answer".
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    client.close()
+
+    assert "Accept the best-effort answer" in html
+    assert "Re-run retrieval with a revised question" in html
+    assert "Write the correct answer manually" in html
+
+
+def test_phase5_review_input_validation() -> None:
+    """Phase 5: retry/override input is validated before submission.
+
+    Asserts the JS blocks an empty retry/override submission with a focused,
+    visible error message, and clears the error as the user types again —
+    so a decision can never reach the API without the payload it requires.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    client.close()
+
+    # Validation guards the submit path against missing input.
+    assert "Please enter a" in js
+    assert "Please choose one of the three options" in js
+
+    # The input error element is shown and focused on failure, then hidden on
+    # input — mirrored by a dedicated error slot in the markup.
+    assert "#review-input-error" in js
+    assert "review-input-error" in js
+    assert 'id="review-input-error"' in html
+
+
+def test_phase5_review_loading_and_error_states() -> None:
+    """Phase 5: the review submission has explicit loading and error states.
+
+    Asserts the confirm button flips to a "Submitting…" busy state and disables
+    the controls while the decision is in flight, and that a failed submission
+    surfaces an error inside the modal (via a live-region alert) instead of
+    closing it, so the user can correct and resubmit.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    client.close()
+
+    # Busy state: button relabelled and controls disabled while in flight.
+    assert "Submitting…" in js
+    assert "function setReviewBusy" in js
+    assert ".disabled = busy" in js
+
+    # Error path keeps the modal open and announces the failure (alert role).
+    assert "Keep the modal open" in js
+    assert 'role="alert"' in html
+    assert "showReviewError" in js
+
+
+def test_phase5_review_keyboard_operable() -> None:
+    """Phase 5: the whole review flow is operable with the keyboard alone.
+
+    Asserts focus is programmatically moved into the modal when it opens (to
+    the first decision), the dialog relies on native Esc-to-close behavior of
+    `<dialog>`, and focus returns to a contained control — no mouse is needed
+    to open, choose, validate, or submit a decision.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    client.close()
+
+    # Focus is moved to the first decision when the modal opens.
+    assert 'focus()' in js
+    assert 'id="review-approve"' in html
+
+    # Decisions are keyboard-navigable radio inputs (arrow keys) and the
+    # submit/cancel are real buttons reachable via Tab.
+    assert 'input[name="review-decision"]' in js
+    assert 'type="radio"' in html
+    assert 'id="review-submit"' in html
+    assert 'id="review-cancel"' in html

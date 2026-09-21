@@ -77,6 +77,31 @@ Dos temas definidos como bloques de tokens: `[data-theme="dark"]` (por defecto) 
 - **Auto-scroll inteligente** (solo si ya estás cerca del fondo) y **textarea
   adaptativo** que crece con el contenido hasta un máximo.
 
+## Flujo de revisión humana — HITL (Fase 5)
+
+Cuando el bucle de corrección Self-RAG agota sus reintentos, el grafo se pausa
+(`interrupt()`) y el frontend abre un **modal accesible** (`<dialog>`) para que
+un humano decida cómo continuar. Todo el flujo es operable solo con teclado.
+
+- **Modal accesible**: `<dialog>` nativo con `aria-labelledby` y
+  `aria-describedby`, **foco atrapado** y **cierre con `Esc`** (comportamiento
+  nativo del elemento). Al abrirse, el foco se mueve al primer control de
+  decisión.
+- **Tres opciones explicadas**: cada decisión es un *radio input* bajo un
+  `<fieldset>` (navegable con flechas), con su explicación visible:
+  - **Approve** — acepta la mejor respuesta disponible tal cual.
+  - **Retry** — re-ejecuta el retrieval con una pregunta revisada que tú
+    escribes.
+  - **Override** — escribes manualmente la respuesta correcta.
+- **Validación del input**: `retry`/`override` revelan un campo etiquetado; si
+  se envía vacío, se bloquea el envío y se muestra un error visible con foco
+  sobre el campo (se limpia al volver a escribir). Si no se eligió ninguna
+  opción, se pide elegir.
+- **Estados de carga/error**: al confirmar, el botón pasa a "*Submitting…*" y
+  se deshabilitan los controles; si la petición falla, el error se muestra
+  *dentro* del modal (`role="alert"`) y el modal permanece abierto para
+  corregir y reintentar — no se cierra ni se vuelca el error al chat.
+
 ## Layout responsive (mobile-first)
 
 El layout es **mobile-first**: los estilos base apuntan a la pantalla más pequeña

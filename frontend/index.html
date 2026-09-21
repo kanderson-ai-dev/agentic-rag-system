@@ -164,19 +164,65 @@
     </section>
   </main>
 
-  <dialog id="review-modal">
-    <h2>Human review required</h2>
-    <p id="review-question" class="muted"></p>
-    <p id="review-docs" class="muted small"></p>
-    <div class="review-actions">
-      <button id="review-approve">Approve &amp; answer</button>
-      <button id="review-retry">Retry with revised question</button>
-      <button id="review-override">Override answer</button>
+  <dialog
+    id="review-modal"
+    aria-labelledby="review-title"
+    aria-describedby="review-description"
+  >
+    <h2 id="review-title">Human review required</h2>
+    <p id="review-description" class="muted small">
+      The system could not answer confidently after several attempts. Choose
+      how to proceed below; your decision resumes the query.
+    </p>
+    <div class="review-context">
+      <p id="review-question" class="muted"></p>
+      <p id="review-docs" class="muted small"></p>
     </div>
-    <textarea id="review-input" rows="3" placeholder="Revised question or manual answer" hidden></textarea>
-    <div class="review-actions" id="review-confirm-row" hidden>
-      <button id="review-confirm">Confirm</button>
-      <button id="review-cancel">Cancel</button>
+
+    <fieldset class="review-choices">
+      <legend class="sr-only">Review decision</legend>
+
+      <label class="review-choice" for="review-approve">
+        <input type="radio" name="review-decision" id="review-approve" value="approve" />
+        <span class="review-choice-body">
+          <strong>Approve</strong>
+          <span class="review-choice-hint">Accept the best-effort answer as-is.</span>
+        </span>
+      </label>
+
+      <label class="review-choice" for="review-retry">
+        <input type="radio" name="review-decision" id="review-retry" value="retry" />
+        <span class="review-choice-body">
+          <strong>Retry</strong>
+          <span class="review-choice-hint">Re-run retrieval with a revised question you provide.</span>
+        </span>
+      </label>
+
+      <label class="review-choice" for="review-override">
+        <input type="radio" name="review-decision" id="review-override" value="override" />
+        <span class="review-choice-body">
+          <strong>Override</strong>
+          <span class="review-choice-hint">Write the correct answer manually.</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <div id="review-input-row" hidden>
+      <label id="review-input-label" for="review-input"></label>
+      <textarea
+        id="review-input"
+        name="review-input"
+        rows="3"
+        placeholder=" "
+      ></textarea>
+      <p id="review-input-error" class="error" hidden></p>
+    </div>
+
+    <p id="review-submit-error" class="error" role="alert" hidden></p>
+
+    <div class="review-actions">
+      <button id="review-cancel" class="secondary" type="button">Cancel</button>
+      <button id="review-submit" type="button">Confirm</button>
     </div>
   </dialog>
 

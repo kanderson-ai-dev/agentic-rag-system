@@ -486,55 +486,142 @@ function resetComposerHeight() {
   textarea.style.height = "auto";
 }
 
-// --- Human review modal ---
-let reviewMode = null;
+// --- Human review modal (Phase 5) -----------------------------------------
+// The review flow is fully keyboard-operable and accessible:
+//   * A native `<dialog>` traps focus and closes on Esc automatically.
+//   * The three decisions (approve / retry / override) are radio inputs with
+//     a clear explanation each, selectable via arrow keys / click.
+//   * Retry and override reveal a labeled input that is validated before
+//     submission — empty input blocks submission with a visible error.
+//   * Submitting shows a busy state on the confirm button and disables the
+//     controls; failures surface inside the modal (with retry) instead of
+//     dumping an error into the chat.
 
-function openReviewModal(interrupt) {
-  reviewMode = null;
-  $("#review-question").textContent = interrupt.question;
-  $("#review-docs").textContent =
-    interrupt.best_documents.slice(0, 2).join("\n\n") || "(no documents)";
-  $("#review-input").hidden = true;
-  $("#review-confirm-row").hidden = true;
-  $("#review-modal").showModal();
+const REVIEW_INPUT_LABELS = {
+  retry: "Revised question",
+  override: "Manual answer",
+};
+const REVIEW_INPUT_PLACEHOLDERS = {
+  retry: "Enter a clearer question to re-run retrieval…",
+  override: "Write the correct answer…",
+};
+
+let reviewMode = null;
+let reviewRetryPayload = null; // remembered decision shape for error retry
+
+function selectedReviewDecision() {
+  const checked = $('input[name="review-decision"]:checked') || null;
+  return checked ? checked.value : null;
 }
 
-$("#review-approve").addEventListener("click", () => submitReview("approve"));
-$("#review-retry").addEventListener("click", () => {
-  reviewMode = "retry";
-  $("#review-input").hidden = false;
-  $("#review-input").placeholder = "Revised question";
-  $("#review-input").value = "";
-  $("#review-confirm-row").hidden = false;
+function setReviewMode(mode) {
+  reviewMode = mode;
+  const inputRow = $("#review-input-row");
+  const input = $("#review-input");
+  const label = $("#review-input-label");
+  if (mode === "retry" || mode === "override") {
+    label.textContent = REVIEW_INPUT_LABELS[mode];
+    input.placeholder = REVIEW_INPUT_PLACEHOLDERS[mode];
+    input.value = "";
+    inputRow.hidden = false;
+    input.focus();
+  } else {
+    input.value = "";
+    inputRow.hidden = true;
+  }
+  clearReviewErrors();
+}
+
+function clearReviewErrors() {
+  $("#review-input-error").hidden = true;
+  $("#review-input-error").textContent = "";
+  $("#review-submit-error").hidden = true;
+  $("#review-submit-error").textContent = "";
+}
+
+function setReviewBusy(busy) {
+  const submit = $("#review-submit");
+  const cancel = $("#review-cancel");
+  submit.disabled = busy;
+  cancel.disabled = busy;
+  submit.textContent = busy ? "Submitting…" : "Confirm";
+  document
+    .querySelectorAll('input[name="review-decision"]')
+    .forEach((radio) => {
+      radio.disabled = busy;
+    });
+  $("#review-input").disabled = busy;
+}
+
+function openReviewModal(interrupt) {
+  // Reset radio selection and mode on each open.
+  document
+    .querySelectorAll('input[name="review-decision"]')
+    .forEach((radio) => {
+      radio.checked = false;
+    });
+  setReviewMode(null);
+  reviewRetryPayload = null;
+
+  $("#review-question").textContent = interrupt.question || "(no question)";
+  const docs = (interrupt.best_documents || []).slice(0, 2).join("\n\n");
+  $("#review-docs").textContent =
+    docs || "(no retrieved documents available)";
+
+  $("#review-modal").showModal();
+  // Move focus to the first decision for immediate keyboard use.
+  $("#review-approve").focus();
+}
+
+// Persist the chosen mode when the user picks a decision.
+document
+  .querySelectorAll('input[name="review-decision"]')
+  .forEach((radio) => {
+    radio.addEventListener("change", () => setReviewMode(radio.value));
+  });
+
+// Clear the input error as soon as the user starts typing again.
+$("#review-input").addEventListener("input", () => {
+  $("#review-input-error").hidden = true;
 });
-$("#review-override").addEventListener("click", () => {
-  reviewMode = "override";
-  $("#review-input").hidden = false;
-  $("#review-input").placeholder = "Manual answer";
-  $("#review-input").value = "";
-  $("#review-confirm-row").hidden = false;
-});
-$("#review-confirm").addEventListener("click", () => {
-  submitReview(reviewMode);
-});
+
 $("#review-cancel").addEventListener("click", () => {
   $("#review-modal").close();
 });
 
-async function submitReview(decision) {
-  const payload = { decision };
-  if (decision === "retry") payload.revised_question = $("#review-input").value;
-  if (decision === "override") payload.override_answer = $("#review-input").value;
+$("#review-submit").addEventListener("click", () => {
+  submitReview(selectedReviewDecision() || reviewMode);
+});
 
-  $("#review-modal").close();
-  if (window.chatBusy) window.chatBusy(true);
-  showTyping();
+async function submitReview(decision) {
+  if (!decision) {
+    showReviewError("Please choose one of the three options before confirming.");
+    return;
+  }
+
+  const input = $("#review-input").value.trim();
+  if ((decision === "retry" || decision === "override") && !input) {
+    const inputError = $("#review-input-error");
+    inputError.textContent =
+      `Please enter a ${decision === "retry" ? "revised question" : "manual answer"}.`;
+    inputError.hidden = false;
+    $("#review-input").focus();
+    return;
+  }
+
+  const payload = { decision };
+  if (decision === "retry") payload.revised_question = input;
+  if (decision === "override") payload.override_answer = input;
+  reviewRetryPayload = payload;
+
+  setReviewBusy(true);
+  clearReviewErrors();
   try {
     const result = await api(`/api/v1/rag/query/${currentThreadId}/review`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    hideTyping();
+    $("#review-modal").close();
     if (result.status === "interrupted") {
       openReviewModal(result.interrupt);
     } else {
@@ -542,13 +629,17 @@ async function submitReview(decision) {
       refreshDashboard();
     }
   } catch (error) {
-    hideTyping();
-    addErrorWithRetry(`Something went wrong: ${error.message}`, () => {
-      submitReview(decision);
-    });
+    // Keep the modal open so the user can correct and retry in place.
+    showReviewError(`Something went wrong: ${error.message}`);
   } finally {
-    if (window.chatBusy) window.chatBusy(false);
+    setReviewBusy(false);
   }
+}
+
+function showReviewError(message) {
+  const submitError = $("#review-submit-error");
+  submitError.textContent = message;
+  submitError.hidden = false;
 }
 
 // --- Dashboard ---
