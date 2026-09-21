@@ -18,6 +18,34 @@ function getSessionId() {
 
 const $ = (sel) => document.querySelector(sel);
 
+// --- Theme toggle ---
+// The initial theme is applied inline in <head> (before first paint). This
+// handler only flips between themes and persists the choice to localStorage,
+// so the preference survives reloads and new tabs within the same browser.
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  try {
+    localStorage.setItem("theme", theme);
+  } catch {
+    // Storage may be unavailable (private mode, blocked cookies); the theme
+    // still applies for this page view, it just won't persist.
+  }
+  const label = theme === "light" ? "Switch to dark theme" : "Switch to light theme";
+  $("#theme-toggle").setAttribute("aria-label", label);
+  $("#theme-toggle").setAttribute("title", label);
+}
+
+$("#theme-toggle").addEventListener("click", () => {
+  setTheme(currentTheme() === "light" ? "dark" : "light");
+});
+
+// Keep the toggle's accessible label in sync with the theme applied at load.
+setTheme(currentTheme());
+
 function addMessage(text, kind = "assistant") {
   const el = document.createElement("div");
   el.className = `message ${kind}`;
