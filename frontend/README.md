@@ -102,6 +102,29 @@ un humano decida cómo continuar. Todo el flujo es operable solo con teclado.
   *dentro* del modal (`role="alert"`) y el modal permanece abierto para
   corregir y reintentar — no se cierra ni se vuelca el error al chat.
 
+## Dashboard (Fase 6)
+
+El panel `#dashboard-panel` muestra datos reales del backend
+(`/api/v1/dashboard/summary`, `/recent` y `/quality`), todos escritos con
+`textContent` (nunca `innerHTML` con datos del servidor):
+
+- **Tarjetas de métricas**: costo total (`$`), latencia promedio (`ms`),
+  requests bloqueados por el guardrail y escalados a revisión humana
+  (`renderSummary`).
+- **Quality (EDD)**: indicadores pass/fail por umbral del *scorecard* RAGAS
+  (`renderQuality`), con estado implícito "sin scorecard todavía".
+- **Gráfico de costo/latencia**: SVG inline construido con `createElementNS`
+  (sin librerías ni `<canvas>`) con dos series normalizadas — *latency* (acento)
+  y *cost* (éxito) — y una leyenda con el valor pico real de cada una
+  (`renderChart`).
+- **Tabla de requests recientes**: columnas ordenables por teclado (botones
+  `button.th-sort` con `aria-sort` en el `<th>`), paginación client-side
+  (`renderPagination`), y formatos `$`/`ms`/miles (`formatUsd`,
+  `formatLatency`, `formatTokens`).
+- **Estados vacío y cargando**: skeleton con *shimmer* mientras los datos están
+  en vuelo (`renderDashboardSkeleton`) y mensajes de vacío explícitos cuando no
+  hay actividad (`#recent-empty`, `#chart-empty`).
+
 ## Layout responsive (mobile-first)
 
 El layout es **mobile-first**: los estilos base apuntan a la pantalla más pequeña

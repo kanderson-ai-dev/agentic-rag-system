@@ -148,19 +148,49 @@
       <h2>Dashboard</h2>
       <p class="muted small">This session only — a fresh visit always starts at zero.</p>
       <div id="summary" class="summary"></div>
+
+      <h3>Cost &amp; latency over time</h3>
+      <figure id="chart-figure" class="chart-figure">
+        <div
+          id="chart"
+          class="chart"
+          role="img"
+          aria-label="Cost and latency per request over time"
+        ></div>
+        <figcaption id="chart-caption" class="muted small"></figcaption>
+      </figure>
+      <p id="chart-empty" class="muted small" hidden>No requests yet to chart.</p>
+
       <h3>Quality (Evaluation Driven Development)</h3>
       <div id="quality" class="summary"></div>
+
       <h3>Recent requests</h3>
-      <div class="table-wrap">
+      <div class="table-wrap" id="table-wrap">
         <table id="recent-table" class="recent">
           <thead>
             <tr>
-              <th>Time</th><th>Tokens</th><th>Cost</th><th>Latency</th><th>Status</th>
+              <th scope="col">
+                <button class="th-sort" type="button" data-sort="timestamp">Time</button>
+              </th>
+              <th scope="col">
+                <button class="th-sort" type="button" data-sort="tokens">Tokens</button>
+              </th>
+              <th scope="col">
+                <button class="th-sort" type="button" data-sort="cost">Cost</button>
+              </th>
+              <th scope="col">
+                <button class="th-sort" type="button" data-sort="latency">Latency</button>
+              </th>
+              <th scope="col">
+                <button class="th-sort" type="button" data-sort="status">Status</button>
+              </th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
+      <p id="recent-empty" class="empty-state" hidden>No requests recorded this session yet.</p>
+      <nav class="pagination" id="pagination" aria-label="Recent requests pagination"></nav>
     </section>
   </main>
 

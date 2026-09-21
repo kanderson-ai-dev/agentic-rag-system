@@ -381,3 +381,129 @@ def test_phase5_review_keyboard_operable() -> None:
     assert 'type="radio"' in html
     assert 'id="review-submit"' in html
     assert 'id="review-cancel"' in html
+
+
+def test_phase6_metric_cards() -> None:
+    """Phase 6: the summary area renders the four core metric cards.
+
+    Asserts the dashboard renders total cost, latency, blocked, and
+    escalated-to-human aggregates with the expected unit formats (`$` and `ms`),
+    driven by explicit formatter helpers rather than ad-hoc interpolation.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    client.close()
+
+    # A summary container feeds the metric cards.
+    assert 'id="summary"' in html
+
+    # Helpers produce the required unit formats ($ and ms).
+    assert "function formatUsd" in js
+    assert "function formatLatency" in js
+    assert '$$' in js  # dollar formatting present
+    assert "ms" in js
+
+    # The four required metric labels are rendered.
+    assert "Total cost" in js
+    assert "Avg latency" in js
+    assert "Blocked" in js
+    assert "Escalated to human" in js
+
+
+def test_phase6_quality_eddsection() -> None:
+    """Phase 6: a Quality (EDD) section shows pass/fail per threshold.
+
+    Asserts the dashboard renders the RAGAS-style metrics with explicit
+    pass/fail states against their thresholds, and degrades to a clear "no
+    scorecard yet" message when the scorecard is absent.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    client.close()
+
+    assert 'id="quality"' in html
+    assert "function renderQuality" in js
+    assert "pass" in js
+    assert "fail" in js
+    # Empty/unavailable scorecard has an explicit, non-fatal fallback.
+    assert "No evaluation scorecard yet" in js
+    assert "run_ragas.py" in js
+
+
+def test_phase6_chart_is_svg_without_libraries() -> None:
+    """Phase 6: a simple cost/latency chart is drawn as inline SVG.
+
+    Asserts the chart is built with the SVG DOM namespace (no chart library /
+    external dependency), plots both cost and latency series, and declares an
+    accessible label via `role="img"`.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    client.close()
+
+    # SVG is composed with createElementNS (no <canvas>, no external lib).
+    assert "createElementNS" in js
+    assert '"http://www.w3.org/2000/svg"' in js
+    assert "canvas" not in js.lower()
+
+    # Both series are represented.
+    assert "series-latency" in js
+    assert "series-cost" in js
+
+    # The chart container is exposed to assistive tech as an image.
+    assert 'id="chart"' in html
+    assert 'role="img"' in html
+    assert 'aria-label="Cost and latency per request over time"' in html
+
+
+def test_phase6_sortable_paginated_table() -> None:
+    """Phase 6: the recent-requests table supports sorting and pagination.
+
+    Asserts columns are sortable (keyboard-operable buttons), the table supports
+    pagination, and numeric values are formatted with `ms`/`$` units.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    client.close()
+
+    # Sortable column headers are real buttons (keyboard + click).
+    assert 'class="th-sort"' in html
+    assert 'data-sort=' in html
+    assert "aria-sort" in js
+
+    # Pagination controls exist and are wired.
+    assert 'id="pagination"' in html
+    assert "page-btn" in js
+    assert 'aria-label="Recent requests pagination"' in html
+
+    # The rows are formatted with the required units.
+    assert "formatTokens" in js
+    assert "status-pill" in js
+
+
+def test_phase6_empty_and_loading_states() -> None:
+    """Phase 6: the dashboard has explicit empty and loading (skeleton) states.
+
+    Asserts a skeleton is shown while data is in flight, and an explicit empty
+    state is shown when there is no recorded activity, so the dashboard never
+    renders a blank or misleading table.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    html = client.get("/").text
+    css = client.get("/styles.css").text
+    client.close()
+
+    # Loading state: skeleton placeholders before real data arrives.
+    assert "renderDashboardSkeleton" in js
+    assert ".skeleton" in css
+
+    # Empty states for both the table and the chart.
+    assert 'id="recent-empty"' in html
+    assert 'id="chart-empty"' in html
+    assert "No requests" in html
+    assert ".empty-state" in css
