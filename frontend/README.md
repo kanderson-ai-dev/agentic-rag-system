@@ -151,3 +151,25 @@ Convenciones de jerarquía y espaciado:
   estructura estática conocida); **nunca** se renderiza salida del LLM sin sanear.
 - El JWT se guarda en memoria (no `localStorage`) para reducir robo vía XSS.
 - `prefers-reduced-motion` desactiva animaciones y transiciones.
+
+## Accesibilidad y seguridad (Fase 7)
+
+- **Anuncios en vivo (`aria-live`)**: la conversación es un `role="log"` polito y,
+  además, un *announcer* visualmente oculto (`#chat-announcer`, `aria-live="polite"`)
+  anuncia en voz alta eventos clave — "*Answer received*", "*A human review is
+  required*" y "*Request blocked by the input guardrail*" — sin mover el foco.
+- **Navegación por teclado completa**: *skip link* ("Skip to main content") que
+  salta al `<main id="main">` (con `tabindex="-1"`), y gestión explícita de foco
+  en el modal: al abrirse, el foco se mueve al primer *radio* de decisión y, al
+  cerrarse, se restaura al elemento que lo tenía antes (`lastFocusedElement`).
+- **Contraste ≥ AA y `prefers-reduced-motion`**: paleta verificada contra el tema
+  activo; el bloque `@media (prefers-reduced-motion: reduce)` colapsa todas las
+  animaciones/transiciones (WCAG 2.3.3).
+- **Saneado total**: `app.js` **nunca** asigna a `innerHTML` — todo el contenido
+  dinámico (respuesta del LLM, dashboard, errores) usa `textContent`/`createElement`.
+  No existe ningún camino de código que traduzca un payload XSS en markup ejecutable.
+- **Toasts y manejo global de errores**: un contenedor `#toasts` (`role="status"`,
+  `aria-live="polite"`) muestra notificaciones transitorias descartables
+  (`showToast`), y los listeners globales `window.addEventListener("error")` y
+  `("unhandledrejection")` convierten fallos inesperados en una notificación
+  visible en lugar de morir en silencio en la consola.

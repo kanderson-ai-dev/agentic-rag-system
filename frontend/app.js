@@ -46,6 +46,59 @@ $("#theme-toggle").addEventListener("click", () => {
 // Keep the toggle's accessible label in sync with the theme applied at load.
 setTheme(currentTheme());
 
+// --- Live announcements + toasts (Phase 7) --------------------------------
+// Screen readers hear about new answers / errors via a visually-hidden polite
+// live region, while sighted users get a transient toast. Both are driven by
+// plain text (never HTML) so nothing dynamic can inject markup.
+
+function announce(message) {
+  const region = $("#chat-announcer");
+  if (!region) return;
+  // Clear then set so repeated identical announcements are still spoken.
+  region.textContent = "";
+  region.textContent = message;
+}
+
+function showToast(message, type = "info", duration = 4000) {
+  const container = $("#toasts");
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.setAttribute("role", "status");
+
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = message;
+
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "toast-dismiss";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.textContent = "×";
+  dismiss.addEventListener("click", () => removeToast(toast));
+
+  toast.append(text, dismiss);
+  container.appendChild(toast);
+
+  window.setTimeout(() => removeToast(toast), duration);
+}
+
+function removeToast(toast) {
+  toast.classList.add("leaving");
+  window.setTimeout(() => toast.remove(), 200);
+}
+
+// Global error handling: unexpected runtime errors and unhandled promise
+// rejections surface as a toast instead of a silent failure or an unhandled
+// console stack only.
+window.addEventListener("error", (event) => {
+  showToast(`Unexpected error: ${event.message}`, "error");
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  showToast(`Request failed: ${reason}`, "error");
+});
+
 // --- Chat experience helpers (Phase 4) ------------------------------------
 
 // XSS-safe Markdown renderer. Builds DOM nodes with `textContent` / safe tag
@@ -253,6 +306,7 @@ async function copyMessageText(button, text) {
   const original = button.textContent;
   button.textContent = "Copied!";
   button.classList.add("copied");
+  announce("Answer copied to clipboard.");
   setTimeout(() => {
     button.textContent = original;
     button.classList.remove("copied");
@@ -402,6 +456,7 @@ $("#login-form").addEventListener("submit", async (event) => {
     });
     accessToken = result.access_token;
     setAuthStatus("signed in", "signed-in");
+    showToast("Signed in successfully.", "success");
     $("#login-panel").hidden = true;
     $("#chat-panel").hidden = false;
     $("#dashboard-panel").hidden = false;
@@ -448,9 +503,15 @@ async function sendQuestion(question) {
     currentThreadId = result.thread_id;
 
     if (result.status === "interrupted") {
+      announce("A human review is required to continue.");
       openReviewModal(result.interrupt);
+    } else if (result.blocked) {
+      announce("Request blocked by the input guardrail.");
+      addMessage(result.answer || "This request was blocked by the safety guardrail.", "system");
+      refreshDashboard();
     } else {
       addAssistantMessage(result.answer || "(no answer)", result.sources || []);
+      announce("Answer received.");
       refreshDashboard();
     }
   } catch (error) {
@@ -508,6 +569,7 @@ const REVIEW_INPUT_PLACEHOLDERS = {
 
 let reviewMode = null;
 let reviewRetryPayload = null; // remembered decision shape for error retry
+let lastFocusedElement = null; // element focused before the modal opened
 
 function selectedReviewDecision() {
   const checked = $('input[name="review-decision"]:checked') || null;
@@ -563,14 +625,31 @@ function openReviewModal(interrupt) {
   setReviewMode(null);
   reviewRetryPayload = null;
 
+  // Remember what had focus so we can return to it when the dialog closes.
+  lastFocusedElement = document.activeElement;
+
   $("#review-question").textContent = interrupt.question || "(no question)";
   const docs = (interrupt.best_documents || []).slice(0, 2).join("\n\n");
   $("#review-docs").textContent =
     docs || "(no retrieved documents available)";
 
-  $("#review-modal").showModal();
+  const modal = $("#review-modal");
+  modal.showModal();
   // Move focus to the first decision for immediate keyboard use.
   $("#review-approve").focus();
+
+  // Restore focus to the triggering control when the dialog closes (e.g. Esc
+  // or Cancel); native <dialog> returns focus to the invoker, but we opened
+  // programmatically so we restore explicitly for a predictable keyboard flow.
+  modal.addEventListener(
+    "close",
+    () => {
+      if (lastFocusedElement && lastFocusedElement.isConnected) {
+        lastFocusedElement.focus();
+      }
+    },
+    { once: true }
+  );
 }
 
 // Persist the chosen mode when the user picks a decision.
@@ -622,10 +701,12 @@ async function submitReview(decision) {
       body: JSON.stringify(payload),
     });
     $("#review-modal").close();
+    showToast("Review submitted.", "success");
     if (result.status === "interrupted") {
       openReviewModal(result.interrupt);
     } else {
       addAssistantMessage(result.answer || "(no answer)", result.sources || []);
+      announce("Answer received.");
       refreshDashboard();
     }
   } catch (error) {
@@ -1066,6 +1147,7 @@ async function refreshDashboard() {
     $("#recent-table tbody").replaceChildren();
     $("#recent-empty").hidden = false;
     $("#pagination").replaceChildren();
+    showToast("Could not load the dashboard.", "error");
   }
 }
 

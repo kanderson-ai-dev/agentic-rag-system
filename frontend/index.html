@@ -66,6 +66,10 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <!-- Keyboard shortcut to bypass the header and jump straight to content.
+       Visually hidden until focused (first Tab press), as required by WCAG 2.4.1. -->
+  <a class="skip-link" href="#main">Skip to main content</a>
+
   <header class="topbar">
     <div class="brand">
       <svg
@@ -108,7 +112,7 @@
     </div>
   </header>
 
-  <main class="layout">
+  <main id="main" class="layout" tabindex="-1">
     <section id="login-panel" class="card">
       <h2>Sign in</h2>
       <form id="login-form">
@@ -122,8 +126,11 @@
     </section>
 
     <section id="chat-panel" class="card" hidden>
-      <h2>Ask a question</h2>
-      <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Conversation">
+      <h2 id="chat-heading">Ask a question</h2>
+      <!-- Screen-reader-only polite live region: announces new assistant answers,
+           blocked requests, and errors without moving visual focus. -->
+      <div id="chat-announcer" class="sr-only" aria-live="polite" role="status"></div>
+      <div id="messages" class="messages" role="log" aria-live="polite" aria-labelledby="chat-heading">
         <div id="chat-welcome" class="chat-welcome">
           <p class="welcome-title">How can I help?</p>
           <p class="muted small">
@@ -145,7 +152,7 @@
     </section>
 
     <section id="dashboard-panel" class="card" hidden>
-      <h2>Dashboard</h2>
+      <h2 id="dashboard-heading">Dashboard</h2>
       <p class="muted small">This session only — a fresh visit always starts at zero.</p>
       <div id="summary" class="summary"></div>
 
@@ -193,6 +200,11 @@
       <nav class="pagination" id="pagination" aria-label="Recent requests pagination"></nav>
     </section>
   </main>
+
+  <!-- Transient notifications (toasts). A single polite live region so
+       screen readers announce messages as they appear; each toast is also
+       dismissible. -->
+  <div id="toasts" class="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 
   <dialog
     id="review-modal"

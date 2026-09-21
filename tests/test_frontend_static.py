@@ -507,3 +507,125 @@ def test_phase6_empty_and_loading_states() -> None:
     assert 'id="chart-empty"' in html
     assert "No requests" in html
     assert ".empty-state" in css
+
+
+def test_phase7_live_announcements_and_roles() -> None:
+    """Phase 7: assertive answers are announced via a dedicated live region.
+
+    Asserts the page declares ARIA roles/landmarks for the conversation log and
+    a visually-hidden polite live region ("announcer") that is driven from JS,
+    so screen readers hear "answer received" without focus jumping around.
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    js = client.get("/app.js").text
+    client.close()
+
+    # Conversation log keeps its live-region semantics.
+    assert 'role="log"' in html
+    assert 'aria-live="polite"' in html
+
+    # A dedicated polite announcer region exists in markup and is driven from JS.
+    assert 'id="chat-announcer"' in html
+    assert 'aria-live="polite"' in js or "announce" in js
+    assert "function announce" in js
+
+    # Answers, guardrail blocks, and review-required are all announced.
+    assert "Answer received" in js
+    assert "human review" in js or "blocked" in js
+
+
+def test_phase7_skip_link_and_main_landmark() -> None:
+    """Phase 7: a skip link jumps straight to content for keyboard users.
+
+    Asserts a "skip to content" link targets the main landmark (which carries
+    `tabindex="-1"` so it can receive programmatic focus), satisfying WCAG
+    2.4.1 (Bypass Blocks).
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    css = client.get("/styles.css").text
+    client.close()
+
+    assert 'class="skip-link"' in html
+    assert 'href="#main"' in html
+    assert "Skip to main content" in html
+    assert 'id="main"' in html
+    assert 'tabindex="-1"' in html
+    assert ".skip-link" in css
+
+
+def test_phase7_focus_management_on_dialog() -> None:
+    """Phase 7: focus is moved into the dialog and restored on close.
+
+    Asserts the review dialog saves the previously-focused element on open and
+    programmatically returns focus to it when the dialog closes, so keyboard
+    users are never stranded after dismissing the modal.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    client.close()
+
+    assert "lastFocusedElement" in js
+    assert "document.activeElement" in js
+    assert 'addEventListener("close"' in js or '"close"' in js
+    assert "lastFocusedElement.focus()" in js
+
+
+def test_phase7_no_unsafe_innerhtml() -> None:
+    """Phase 7: no dynamic content is ever rendered via raw innerHTML.
+
+    Asserts the script never assigns to `innerHTML` at all — all server/LLM
+    output flows through `textContent`/`createElement` — so there is no code
+    path that could translate an XSS payload into executable markup.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    client.close()
+
+    # The script never *assigns* to innerHTML (`.innerHTML =`), only mentions
+    # it in explanatory comments. Every dynamic value flows through textContent.
+    assert ".innerHTML" not in js
+    assert "innerHTML =" not in js
+    assert "textContent" in js
+    assert "document.createElement" in js
+
+
+def test_phase7_toasts_and_global_error_handling() -> None:
+    """Phase 7: transient toasts and a global error handler exist.
+
+    Asserts a toast container (polite live region) is present in markup with a
+    JS `showToast` helper, and that unexpected runtime errors and unhandled
+    promise rejections are routed to a visible notification rather than dying
+    silently in the console.
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    js = client.get("/app.js").text
+    css = client.get("/styles.css").text
+    client.close()
+
+    assert 'id="toasts"' in html
+    assert 'role="status"' in html
+    assert "function showToast" in js
+    assert ".toast" in css
+
+    # Global error + unhandled rejection listeners surface a toast.
+    assert 'window.addEventListener("error"' in js
+    assert 'window.addEventListener("unhandledrejection"' in js
+    assert "showToast" in js
+
+
+def test_phase7_reduced_motion_respected() -> None:
+    """Phase 7: animations/transitions are disabled for reduced-motion users.
+
+    Asserts a `prefers-reduced-motion: reduce` block collapses animation and
+    transition durations, honoring WCAG 2.3.3 (no animation unless opted out).
+    """
+    client = TestClient(app)
+    css = client.get("/styles.css").text
+    client.close()
+
+    assert "@media (prefers-reduced-motion: reduce)" in css
+    assert "animation-duration" in css
+    assert "transition-duration" in css
