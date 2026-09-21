@@ -57,6 +57,26 @@ Dos temas definidos como bloques de tokens: `[data-theme="dark"]` (por defecto) 
   propio en pantallas estrechas, sin romper el scroll de la página).
 - **Stats**: `.stat` (+ `.quality-stat.pass/.fail`).
 
+## Experiencia de chat (Fase 4)
+
+- **Markdown saneado (sin XSS)**: las respuestas del LLM se renderizan con un
+  *renderer* propio (`renderMarkdown` en `app.js`) que construye nodos DOM solo
+  con `textContent` / `createElement` — **nunca** asigna salida no confiable a
+  `innerHTML`. El HTML crudo en la respuesta se trata siempre como texto literal
+  (riesgo de XSS neutralizado por diseño). Subconjunto soportado: código fenced
+  e inline, headings, listas ordenadas/desordenadas, blockquotes, párrafos y
+  `**negrita**` / `*cursiva*`.
+- **Indicador "escribiendo…"** y estados de carga: burbuja con puntos animados
+  (`showTyping`/`hideTyping`) mientras la query está en vuelo; el botón *Send*
+  pasa a "*Sending…*" y se deshabilita hasta resolver.
+- **Copiar respuesta y fuentes**: cada respuesta trae un botón *Copy* (Clipboard
+  API con fallback a `execCommand("copy")`) y las fuentes recuperadas se
+  muestran como *chips* (`sources` del `QueryResponse`).
+- **Estados**: *welcome* (vacío), *loading* (typing), y *error* con reintento
+  (`addErrorWithRetry`).
+- **Auto-scroll inteligente** (solo si ya estás cerca del fondo) y **textarea
+  adaptativo** que crece con el contenido hasta un máximo.
+
 ## Layout responsive (mobile-first)
 
 El layout es **mobile-first**: los estilos base apuntan a la pantalla más pequeña

@@ -479,6 +479,7 @@ form button[type="submit"] {
   margin-bottom: var(--space-4);
   max-height: 440px;
   overflow-y: auto;
+  scroll-behavior: smooth;
 }
 
 .message {
@@ -506,6 +507,247 @@ form button[type="submit"] {
   font-style: italic;
   background: transparent;
   border-style: dashed;
+}
+
+/* --- Chat experience (Phase 4) ------------------------------------------ */
+
+/* Empty / welcome state. */
+.chat-welcome {
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+}
+
+.chat-welcome .welcome-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  margin: 0 0 var(--space-2);
+}
+
+/* Message rendering: the assistant answer is composed via a DOM-based,
+   XSS-safe renderer. These rules style the sanitized output. */
+.message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.message-body > *:first-child {
+  margin-top: 0;
+}
+
+.message-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.message-body p {
+  margin: 0 0 var(--space-2);
+}
+
+.message-body ul,
+.message-body ol {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-5);
+}
+
+.message-body li {
+  margin: var(--space-1) 0;
+}
+
+.message-body h1,
+.message-body h2,
+.message-body h3,
+.message-body h4 {
+  margin: var(--space-3) 0 var(--space-2);
+  line-height: var(--leading-tight);
+}
+
+.message-body h1 {
+  font-size: var(--text-xl);
+}
+.message-body h2 {
+  font-size: var(--text-lg);
+}
+.message-body h3 {
+  font-size: var(--text-base);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+}
+.message-body h4 {
+  font-size: var(--text-sm);
+}
+
+.message-body blockquote {
+  margin: var(--space-2) 0;
+  padding: var(--space-1) var(--space-3);
+  border-left: 3px solid var(--accent);
+  color: var(--text-muted);
+}
+
+.message-body pre {
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.message-body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--surface-inset);
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+}
+
+.message-body pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* Copy button in the message header row. */
+.message-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 26px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.copy-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: transparent;
+}
+
+.copy-btn.copied {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+}
+
+/* Source chips under an answer. */
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.source-chip code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: transparent;
+  padding: 0;
+}
+
+/* Typing indicator: three animated dots. */
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+}
+
+.typing .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--text-subtle);
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+
+.typing .dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing .dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+/* Error message with a retry affordance. */
+.message.error {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+
+.message .retry-btn {
+  margin-top: var(--space-2);
+}
+
+/* Composer: keep the textarea and the send button on one row, and let the
+   textarea grow. */
+#chat-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+#chat-form textarea {
+  flex: 1 1 auto;
+  resize: none;
+  min-height: 42px;
+  max-height: 160px;
+  overflow-y: auto;
+  line-height: var(--leading-normal);
+}
+
+#chat-form button[type="submit"] {
+  margin-top: 0;
+  flex-shrink: 0;
+  height: 42px;
+}
+
+#chat-form button[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* --- Stats --------------------------------------------------------------- */

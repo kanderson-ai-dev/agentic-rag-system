@@ -123,15 +123,24 @@
 
     <section id="chat-panel" class="card" hidden>
       <h2>Ask a question</h2>
-      <div id="messages" class="messages"></div>
+      <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Conversation">
+        <div id="chat-welcome" class="chat-welcome">
+          <p class="welcome-title">How can I help?</p>
+          <p class="muted small">
+            Ask about LangGraph, Self-RAG, human-in-the-loop, or hybrid retrieval.
+            Answers are grounded in retrieved sources, and low-confidence
+            responses are routed to a human review step before being shown.
+          </p>
+        </div>
+      </div>
       <form id="chat-form">
         <textarea
           id="question"
-          rows="2"
-          placeholder="Ask about LangGraph, Self-RAG, HITL... (Enter to send, Shift+Enter for a new line)"
+          rows="1"
+          placeholder="Ask a question… (Enter to send, Shift+Enter for a new line)"
           required
         ></textarea>
-        <button type="submit">Send</button>
+        <button type="submit" id="chat-send">Send</button>
       </form>
     </section>
 
