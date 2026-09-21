@@ -10,6 +10,8 @@ data/*.sqlite
 data/*.sqlite-*
 data/chroma/
 data/knowledge_graph.json
+evaluation/results/history/
+evaluation/results/llm_judge_evaluation_*.json
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

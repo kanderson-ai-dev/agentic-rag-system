@@ -103,6 +103,7 @@ button.danger { background: var(--danger); }
 }
 
 .message {
+  max-width: 80%;
   padding: 12px 14px;
   border-radius: var(--radius);
   background: var(--surface-2);
@@ -110,9 +111,14 @@ button.danger { background: var(--danger); }
   white-space: pre-wrap;
 }
 
-.message.user { border-color: var(--accent); }
-.message.assistant { background: var(--surface); }
-.message.system { color: var(--muted); font-style: italic; }
+.message.user {
+  align-self: flex-end;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.message.assistant { align-self: flex-start; background: var(--surface); }
+.message.system { align-self: center; color: var(--muted); font-style: italic; }
 
 .summary {
   display: grid;
@@ -130,6 +136,14 @@ button.danger { background: var(--danger); }
 
 .summary .stat .value { font-size: 1.4rem; font-weight: 700; }
 .summary .stat .label { color: var(--muted); font-size: 0.8rem; }
+
+.quality-stat { border-left: 3px solid var(--border); }
+.quality-stat.pass { border-left-color: var(--success); }
+.quality-stat.pass .value { color: var(--success); }
+.quality-stat.fail { border-left-color: var(--danger); }
+.quality-stat.fail .value { color: var(--danger); }
+.quality-stat .threshold { color: var(--muted); }
+.quality-stat .label { text-transform: capitalize; }
 
 table.recent { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 table.recent th, table.recent td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }

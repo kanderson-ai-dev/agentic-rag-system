@@ -8,11 +8,29 @@ Chroma store (the default, so the demo works without any external account).
 
 from pathlib import Path
 
+from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStoreRetriever
 
+from app.core.cache import TTLCache
 from app.core.config import Settings
 from app.services.knowledge_base import SAMPLE_DOCUMENTS
+
+# Pinecone is a remote call and a meaningful share of retrieval latency;
+# cache results briefly so repeated/demo questions don't pay the round trip
+# every time. Chroma is already local, so it does not need this.
+_RETRIEVER_CACHE_TTL_SECONDS = 300.0
+
+
+class _CachingRetriever:
+    """Wraps a retriever's `.invoke()` with a short-lived TTL cache."""
+
+    def __init__(self, retriever: VectorStoreRetriever, cache: TTLCache[list[Document]]) -> None:
+        self._retriever = retriever
+        self._cache = cache
+
+    def invoke(self, question: str) -> list[Document]:
+        return self._cache.get_or_compute(question, lambda: self._retriever.invoke(question))
 
 
 class ChromaVectorStoreService:
@@ -54,9 +72,11 @@ class PineconeVectorStoreService:
         pc = Pinecone(api_key=api_key)
         index = pc.Index(index_name)
         self._store = PineconeVectorStore(index=index, embedding=embeddings)
+        self._cache: TTLCache[list[Document]] = TTLCache(ttl_seconds=_RETRIEVER_CACHE_TTL_SECONDS)
 
-    def as_retriever(self, top_k: int = 4) -> VectorStoreRetriever:
-        return self._store.as_retriever(search_kwargs={"k": top_k})
+    def as_retriever(self, top_k: int = 4):
+        base = self._store.as_retriever(search_kwargs={"k": top_k})
+        return _CachingRetriever(base, self._cache)
 
 
 def build_vector_store_service(settings: Settings):

@@ -7,7 +7,7 @@ that reads them back from `app.state`.
 """
 
 import jwt
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langgraph.graph.state import CompiledStateGraph
 
@@ -15,6 +15,17 @@ from app.core.config import Settings, get_settings
 from app.core.security import decode_access_token
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+def get_session_id(x_session_id: str | None = Header(default=None)) -> str | None:
+    """Return the caller-supplied `X-Session-Id`, or `None` if absent.
+
+    The frontend generates a random id per browser session (sessionStorage)
+    so the dashboard can be scoped to "what happened in this visit" instead
+    of the service's lifetime totals. Callers that don't send the header
+    (curl, other API clients) are simply not scoped to any session.
+    """
+    return x_session_id
 
 
 def get_graph(request: Request) -> CompiledStateGraph:

@@ -24,7 +24,9 @@ SAMPLE_DOCUMENTS: list[Document] = [
             "system critiques its own retrieved context before generating an "
             "answer. If the retrieved documents are graded as irrelevant or "
             "insufficient, the query is rewritten and retrieval is retried "
-            "instead of generating an answer from weak context."
+            "instead of generating an answer from weak context. When retries "
+            "are exhausted, the system escalates to human-in-the-loop review "
+            "rather than hallucinating from weak context."
         ),
         metadata={"source": "self-rag-pattern", "topic": "self-rag"},
     ),
@@ -63,8 +65,30 @@ SAMPLE_DOCUMENTS: list[Document] = [
             "invocations, keyed by a thread_id. SqliteSaver stores this "
             "state in a local SQLite file, which is durable across process "
             "restarts, unlike the in-memory InMemorySaver used only for "
-            "tests and short-lived scripts."
+            "tests and short-lived scripts. LangGraph can work without a "
+            "checkpointer for single-execution workflows, but checkpointer "
+            "is required for human-in-the-loop patterns and state persistence."
         ),
         metadata={"source": "langgraph-checkpointing", "topic": "checkpointing"},
+    ),
+    Document(
+        page_content=(
+            "LangGraph and Self-RAG are related in that LangGraph provides the "
+            "orchestration framework to implement the Self-RAG pattern. Self-RAG "
+            "is a specific retrieval-augmented generation approach that can be "
+            "built using LangGraph's graph-based workflow system, nodes, edges, "
+            "and state management capabilities."
+        ),
+        metadata={"source": "langgraph-selfrag-relationship", "topic": "langgraph"},
+    ),
+    Document(
+        page_content=(
+            "When Self-RAG exhausts its retry attempts without finding sufficient "
+            "context, it escalates to human-in-the-loop review instead of generating "
+            "an answer from weak context. This prevents hallucinations by refusing "
+            "to answer when the retrieved documents are inadequate, allowing a human "
+            "reviewer to provide guidance or override the system's decision."
+        ),
+        metadata={"source": "self-rag-escalation", "topic": "self-rag"},
     ),
 ]

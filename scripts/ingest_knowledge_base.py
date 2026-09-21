@@ -19,6 +19,8 @@ _RELATED_EDGES = [
     ("langgraph-overview", "langgraph-hitl"),
     ("langgraph-overview", "langgraph-checkpointing"),
     ("self-rag-pattern", "langsmith-evaluation"),
+    ("langgraph-overview", "langgraph-selfrag-relationship"),
+    ("self-rag-pattern", "self-rag-escalation"),
 ]
 
 

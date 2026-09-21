@@ -57,6 +57,30 @@ SAMPLE_CASES: list[dict[str, str]] = [
             "it does not know rather than hallucinate."
         ),
     },
+    {
+        "question": "How are LangGraph and Self-RAG related?",
+        "ground_truth": (
+            "LangGraph is the orchestration framework that can implement the Self-RAG pattern. "
+            "Self-RAG is a specific retrieval-augmented generation approach that can be built "
+            "using LangGraph's graph-based workflow system."
+        ),
+    },
+    {
+        "question": "What happens when Self-RAG exhausts its retry attempts?",
+        "ground_truth": (
+            "When Self-RAG exhausts its retry attempts without finding sufficient context, "
+            "it escalates to human-in-the-loop review instead of generating an answer from "
+            "weak context."
+        ),
+    },
+    {
+        "question": "Can LangGraph work without a checkpointer?",
+        "ground_truth": (
+            "LangGraph can work without a checkpointer for single-execution workflows, but "
+            "a checkpointer is required for human-in-the-loop patterns and state persistence "
+            "across invocations."
+        ),
+    },
 ]
 
 

@@ -14,7 +14,13 @@ from typing import Protocol
 
 from langchain_core.documents import Document
 
+from app.core.cache import TTLCache
 from app.core.config import Settings
+
+# Cloud graph queries (Neo4j Aura) are the single largest contributor to
+# retrieval latency; results are cached briefly since the demo knowledge
+# graph changes only via the ingest script, not per-request.
+_GRAPH_SEARCH_CACHE_TTL_SECONDS = 300.0
 
 # Cypher keywords rejected by `sanitize_graph_term` as defense-in-depth on top
 # of parameterization.
@@ -147,6 +153,9 @@ class Neo4jGraphStoreService:
         from neo4j import GraphDatabase
 
         self._driver = GraphDatabase.driver(uri, auth=(username, password))
+        self._cache: TTLCache[list[Document]] = TTLCache(
+            ttl_seconds=_GRAPH_SEARCH_CACHE_TTL_SECONDS
+        )
 
     def close(self) -> None:
         self._driver.close()
@@ -158,6 +167,9 @@ class Neo4jGraphStoreService:
             return []
         if not safe:
             return []
+        return self._cache.get_or_compute(safe.lower(), lambda: self._query(safe))
+
+    def _query(self, safe: str) -> list[Document]:
         # Parameterized Cypher: user input is bound via `$term`, never
         # interpolated into the query string.
         query = (

@@ -20,8 +20,12 @@ _FAITHFULNESS_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Answer only 'yes' or 'no': is the answer fully supported by the "
-            "context, with no unsupported claims?",
+            "You are a strict evaluator. Analyze whether the answer is fully grounded in the context. "
+            "Return a score from 0.0 to 1.0 where:\n"
+            "- 1.0: Answer is completely supported by context with no hallucinations\n"
+            "- 0.5: Answer is partially supported but contains some unsupported claims\n"
+            "- 0.0: Answer contains significant hallucinations or is not supported by context\n\n"
+            "Respond with ONLY the numeric score (e.g., '0.75').",
         ),
         ("human", "Context:\n{context}\n\nAnswer:\n{answer}"),
     ]
@@ -30,7 +34,12 @@ _ANSWER_RELEVANCY_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Answer only 'yes' or 'no': does the answer directly address the question?",
+            "You are a strict evaluator. Analyze whether the answer directly addresses the question. "
+            "Return a score from 0.0 to 1.0 where:\n"
+            "- 1.0: Answer directly and completely addresses the question\n"
+            "- 0.5: Answer partially addresses the question but is incomplete or tangential\n"
+            "- 0.0: Answer does not address the question or is completely irrelevant\n\n"
+            "Respond with ONLY the numeric score (e.g., '0.75').",
         ),
         ("human", "Question: {question}\n\nAnswer:\n{answer}"),
     ]
@@ -39,8 +48,12 @@ _CONTEXT_PRECISION_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Answer only 'yes' or 'no': is the retrieved context relevant and "
-            "precise for answering the question?",
+            "You are a strict evaluator. Analyze whether the retrieved context is relevant and precise for answering the question. "
+            "Return a score from 0.0 to 1.0 where:\n"
+            "- 1.0: Context is highly relevant and precisely matches what's needed\n"
+            "- 0.5: Context is somewhat relevant but contains noise or irrelevant information\n"
+            "- 0.0: Context is irrelevant or does not help answer the question\n\n"
+            "Respond with ONLY the numeric score (e.g., '0.75').",
         ),
         ("human", "Question: {question}\n\nContext:\n{context}"),
     ]
@@ -49,8 +62,12 @@ _CONTEXT_RECALL_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Answer only 'yes' or 'no': does the retrieved context contain the "
-            "information needed to answer the question?",
+            "You are a strict evaluator. Analyze whether the retrieved context contains all information needed to answer the question. "
+            "Return a score from 0.0 to 1.0 where:\n"
+            "- 1.0: Context contains all necessary information to answer the question completely\n"
+            "- 0.5: Context contains some relevant information but is missing key details\n"
+            "- 0.0: Context lacks the information needed to answer the question\n\n"
+            "Respond with ONLY the numeric score (e.g., '0.75').",
         ),
         ("human", "Question: {question}\n\nContext:\n{context}"),
     ]
@@ -72,30 +89,50 @@ def _get_llm():
     return build_chat_model(get_settings())
 
 
-def _yes_no(prompt: ChatPromptTemplate, **inputs: str) -> float:
+def _score_from_response(prompt: ChatPromptTemplate, **inputs: str) -> float:
+    """Extract a numeric score (0.0-1.0) from LLM response with robust parsing."""
     chain = prompt | _get_llm() | StrOutputParser()
     raw = chain.invoke(inputs).strip().lower()
-    return 1.0 if raw.startswith("yes") else 0.0
+
+    # Try to extract a number from the response
+    import re
+    number_match = re.search(r'(\d+\.?\d*)', raw)
+    if number_match:
+        try:
+            score = float(number_match.group(1))
+            # Clamp to 0.0-1.0 range
+            return max(0.0, min(1.0, score))
+        except ValueError:
+            pass
+
+    # Fallback: check for yes/no keywords
+    if raw.startswith("yes"):
+        return 1.0
+    elif raw.startswith("no"):
+        return 0.0
+
+    # Default fallback
+    return 0.5
 
 
 def faithfulness(context: str, answer: str) -> float:
-    """1.0 if the answer is fully grounded in the context, else 0.0."""
-    return _yes_no(_FAITHFULNESS_PROMPT, context=context, answer=answer)
+    """Score from 0.0 to 1.0: how well the answer is grounded in the context."""
+    return _score_from_response(_FAITHFULNESS_PROMPT, context=context, answer=answer)
 
 
 def answer_relevancy(question: str, answer: str) -> float:
-    """1.0 if the answer directly addresses the question, else 0.0."""
-    return _yes_no(_ANSWER_RELEVANCY_PROMPT, question=question, answer=answer)
+    """Score from 0.0 to 1.0: how well the answer addresses the question."""
+    return _score_from_response(_ANSWER_RELEVANCY_PROMPT, question=question, answer=answer)
 
 
 def context_precision(question: str, context: str) -> float:
-    """1.0 if the retrieved context is precise for the question, else 0.0."""
-    return _yes_no(_CONTEXT_PRECISION_PROMPT, question=question, context=context)
+    """Score from 0.0 to 1.0: how relevant and precise the context is for the question."""
+    return _score_from_response(_CONTEXT_PRECISION_PROMPT, question=question, context=context)
 
 
 def context_recall(question: str, context: str) -> float:
-    """1.0 if the retrieved context covers the answer, else 0.0."""
-    return _yes_no(_CONTEXT_RECALL_PROMPT, question=question, context=context)
+    """Score from 0.0 to 1.0: how well the context covers the information needed."""
+    return _score_from_response(_CONTEXT_RECALL_PROMPT, question=question, context=context)
 
 
 def _extract_qa(run: Any) -> tuple[str, str, str]:

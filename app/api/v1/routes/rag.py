@@ -9,7 +9,7 @@ from langgraph.graph.state import CompiledStateGraph
 from app.api.v1.schemas import QueryRequest, QueryResponse
 from app.core.config import get_settings
 from app.core.cost_tracking import calculate_cost_usd
-from app.core.dependencies import get_graph, verify_jwt
+from app.core.dependencies import get_graph, get_session_id, verify_jwt
 from app.core.metrics import (
     agent_blocked_requests_total,
     agent_human_review_total,
@@ -26,6 +26,7 @@ def query(
     request: Request,
     graph: CompiledStateGraph = Depends(get_graph),
     _: dict | None = Depends(verify_jwt),
+    session_id: str | None = Depends(get_session_id),
 ) -> QueryResponse:
     """Invoke the compiled Self-RAG graph for a question.
 
@@ -66,6 +67,7 @@ def query(
             blocked=bool(result.get("blocked", False)),
             escalated=bool(result.get("__interrupt__")),
             retry_count=result.get("retry_count", 0),
+            session_id=session_id,
         )
 
     if result.get("blocked"):

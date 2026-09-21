@@ -29,14 +29,22 @@
       <h2>Ask a question</h2>
       <div id="messages" class="messages"></div>
       <form id="chat-form">
-        <textarea id="question" rows="2" placeholder="Ask about LangGraph, Self-RAG, HITL..." required></textarea>
+        <textarea
+          id="question"
+          rows="2"
+          placeholder="Ask about LangGraph, Self-RAG, HITL... (Enter to send, Shift+Enter for a new line)"
+          required
+        ></textarea>
         <button type="submit">Send</button>
       </form>
     </section>
 
     <section id="dashboard-panel" class="card" hidden>
       <h2>Dashboard</h2>
+      <p class="muted small">This session only — a fresh visit always starts at zero.</p>
       <div id="summary" class="summary"></div>
+      <h3>Quality (Evaluation Driven Development)</h3>
+      <div id="quality" class="summary"></div>
       <h3>Recent requests</h3>
       <table id="recent-table" class="recent">
         <thead>

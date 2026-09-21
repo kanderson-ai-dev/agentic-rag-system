@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.core.cache import TTLCache
 from app.services.graph_store import (
     Neo4jGraphStoreService,
     NetworkXGraphStoreService,
@@ -58,6 +59,7 @@ def _neo4j_service() -> Neo4jGraphStoreService:
     # Bypass __init__ to avoid importing/connecting a real driver.
     service = Neo4jGraphStoreService.__new__(Neo4jGraphStoreService)
     service._driver = _FakeDriver()
+    service._cache = TTLCache()
     return service
 
 

@@ -41,6 +41,29 @@ def _client(settings: Settings) -> TestClient:
     return TestClient(app)
 
 
+class TestAuthStatus:
+    def test_reports_required_when_configured(self) -> None:
+        with _client(_settings()) as client:
+            response = client.get("/api/v1/auth/status")
+
+        assert response.status_code == 200
+        assert response.json() == {"auth_required": True}
+
+    def test_reports_not_required_when_unconfigured(self) -> None:
+        with _client(_settings(jwt_secret_key=None)) as client:
+            response = client.get("/api/v1/auth/status")
+
+        assert response.status_code == 200
+        assert response.json() == {"auth_required": False}
+
+    def test_reports_not_required_when_partially_configured(self) -> None:
+        with _client(_settings(auth_password_hash=None)) as client:
+            response = client.get("/api/v1/auth/status")
+
+        assert response.status_code == 200
+        assert response.json() == {"auth_required": False}
+
+
 class TestLogin:
     def test_login_returns_token(self) -> None:
         with _client(_settings()) as client:

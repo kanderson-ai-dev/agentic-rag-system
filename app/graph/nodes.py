@@ -6,6 +6,7 @@ only need to expose an `.invoke()` method, so unit tests can pass in simple
 stub objects instead of real LangChain runnables or network calls.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol
 
 from langchain_core.documents import Document
@@ -37,28 +38,53 @@ def make_hybrid_retrieve_node(retriever: Invokable, graph_search_fn):
     ``graph_search_fn`` is a callable `(term: str) -> list[Document]` provided
     by the graph store service (Neo4j or NetworkX). Combined results are merged
     into ``documents`` with per-document ``source``/``backend`` metadata.
+
+    The vector and graph queries are independent I/O calls to different
+    backends, so they run concurrently in a thread pool instead of back to
+    back — this roughly halves retrieval latency (dominated by network round
+    trips, not CPU), which matters most when the graph backend is a Neo4j
+    Aura free-tier instance waking up from sleep.
     """
 
     @timed_node("retrieve")
     def retrieve_node(state: GraphState) -> dict:
         question = state["question"]
-        documents: list[Document] = list(retriever.invoke(question))
-        documents.extend(graph_search_fn(question))
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            vector_future = executor.submit(retriever.invoke, question)
+            graph_future = executor.submit(graph_search_fn, question)
+            documents: list[Document] = list(vector_future.result())
+            documents.extend(graph_future.result())
         return {"documents": documents}
 
     return retrieve_node
 
 
 def make_grade_documents_node(grader_chain: Invokable):
-    """Filter out documents that are not relevant to the question."""
+    """Filter out documents that are not relevant to the question.
+
+    Each document is graded with its own LLM call; grading them concurrently
+    (instead of one-by-one) turns N sequential round trips into roughly the
+    latency of a single call, which is the main lever on end-to-end latency
+    for questions that retrieve several documents.
+    """
 
     @timed_node("grade_documents")
     def grade_documents_node(state: GraphState) -> dict:
-        relevant_documents = []
-        for document in state["documents"]:
-            grading_input = {"question": state["question"], "document": document.page_content}
-            if _binary_score(grader_chain.invoke(grading_input)) == "yes":
-                relevant_documents.append(document)
+        documents = state["documents"]
+        question = state["question"]
+        if not documents:
+            return {"documents": [], "web_search_needed": True}
+
+        def _grade(document: Document) -> str:
+            grading_input = {"question": question, "document": document.page_content}
+            return _binary_score(grader_chain.invoke(grading_input))
+
+        with ThreadPoolExecutor(max_workers=min(len(documents), 8)) as executor:
+            scores = list(executor.map(_grade, documents))
+
+        relevant_documents = [
+            doc for doc, score in zip(documents, scores, strict=True) if score == "yes"
+        ]
         return {
             "documents": relevant_documents,
             "web_search_needed": len(relevant_documents) == 0,

@@ -4,6 +4,7 @@ Only numeric metadata is stored (tokens, cost, latency, flags) — never the
 content of the question or the answer — to minimize exposure if the file leaks.
 """
 
+import contextlib
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ class UsageStore:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 thread_id TEXT NOT NULL,
+                session_id TEXT,
                 prompt_tokens INTEGER NOT NULL,
                 completion_tokens INTEGER NOT NULL,
                 cost_usd REAL NOT NULL,
@@ -34,6 +36,9 @@ class UsageStore:
             )
             """
         )
+        # Backfill `session_id` for databases created before this column existed.
+        with contextlib.suppress(sqlite3.OperationalError):
+            self._conn.execute("ALTER TABLE usage ADD COLUMN session_id TEXT")
         self._conn.commit()
 
     def record(
@@ -47,17 +52,19 @@ class UsageStore:
         blocked: bool,
         escalated: bool,
         retry_count: int,
+        session_id: str | None = None,
     ) -> None:
         self._conn.execute(
             """
             INSERT INTO usage
-                (timestamp, thread_id, prompt_tokens, completion_tokens,
+                (timestamp, thread_id, session_id, prompt_tokens, completion_tokens,
                  cost_usd, latency_ms, blocked, escalated, retry_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now(UTC).isoformat(),
                 thread_id,
+                session_id,
                 prompt_tokens,
                 completion_tokens,
                 cost_usd,
@@ -69,9 +76,19 @@ class UsageStore:
         )
         self._conn.commit()
 
-    def summary(self) -> dict:
+    def summary(self, session_id: str | None = None) -> dict:
+        """Aggregate usage metrics.
+
+        With no `session_id`, aggregates across all recorded requests (useful
+        for operators). Passed a `session_id`, scopes the aggregate to that
+        browser session only — this is what the frontend uses so a first-time
+        visitor (a fresh session, e.g. a new tab) always sees a dashboard
+        starting at zero, instead of the service's lifetime totals.
+        """
+        where = "WHERE session_id = ?" if session_id is not None else ""
+        params = (session_id,) if session_id is not None else ()
         row = self._conn.execute(
-            """
+            f"""
             SELECT
                 COUNT(*),
                 COALESCE(SUM(prompt_tokens), 0),
@@ -80,8 +97,9 @@ class UsageStore:
                 COALESCE(AVG(latency_ms), 0),
                 COALESCE(SUM(blocked), 0),
                 COALESCE(SUM(escalated), 0)
-            FROM usage
-            """
+            FROM usage {where}
+            """,
+            params,
         ).fetchone()
         return {
             "total_requests": row[0],
@@ -93,16 +111,18 @@ class UsageStore:
             "escalated_requests": row[6],
         }
 
-    def recent(self, limit: int = 20) -> list[dict]:
+    def recent(self, limit: int = 20, session_id: str | None = None) -> list[dict]:
+        where = "WHERE session_id = ?" if session_id is not None else ""
+        params: tuple = (session_id, limit) if session_id is not None else (limit,)
         rows = self._conn.execute(
-            """
+            f"""
             SELECT timestamp, thread_id, prompt_tokens, completion_tokens,
                    cost_usd, latency_ms, blocked, escalated, retry_count
-            FROM usage
+            FROM usage {where}
             ORDER BY id DESC
             LIMIT ?
             """,
-            (limit,),
+            params,
         ).fetchall()
         return [
             {

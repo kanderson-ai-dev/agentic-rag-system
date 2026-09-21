@@ -82,3 +82,14 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+class AuthStatusResponse(BaseModel):
+    """Response body for `GET /api/v1/auth/status`.
+
+    Lets clients (e.g. the frontend) know upfront whether the service requires
+    a login, instead of guessing or showing a sign-in form that can never
+    succeed when `JWT_SECRET_KEY`/`AUTH_USERNAME`/`AUTH_PASSWORD_HASH` are unset.
+    """
+
+    auth_required: bool
