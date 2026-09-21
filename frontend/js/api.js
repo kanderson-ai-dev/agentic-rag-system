@@ -1,21 +1,10 @@
-// Thin authenticated fetch wrapper for the backend API.
+// Thin fetch wrapper for the backend API.
 //
-// The JWT lives in module scope (in memory only, never localStorage) to reduce
-// the surface for token theft via XSS. It is exposed through explicit
-// getter/setter functions rather than a mutable module-level variable that any
-// importer could overwrite.
+// The app has no login flow — it is open by design — so requests never carry
+// an Authorization header. Every request is tagged with the per-session id
+// so the dashboard can scope aggregates to "this visit".
 
 import { getSessionId } from "./util.js";
-
-let accessToken = null;
-
-export function setAccessToken(token) {
-  accessToken = token;
-}
-
-export function getAccessToken() {
-  return accessToken;
-}
 
 export async function api(path, options = {}) {
   const headers = {
@@ -23,7 +12,6 @@ export async function api(path, options = {}) {
     "X-Session-Id": getSessionId(),
     ...(options.headers || {}),
   };
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const response = await fetch(path, { ...options, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

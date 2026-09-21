@@ -428,8 +428,8 @@ async function refreshDashboard() {
     renderChart(dashboard.recent);
     renderRecentTable();
   } catch {
-    // Dashboard is best-effort; stay in the empty state on failure while
-    // signed out or if the endpoint is unavailable.
+    // Dashboard is best-effort; stay in the empty state if the endpoint is
+    // unavailable.
     $("#summary").replaceChildren();
     $("#chart").replaceChildren();
     $("#chart-figure").hidden = true;

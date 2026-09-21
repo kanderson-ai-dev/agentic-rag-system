@@ -311,13 +311,10 @@ code {
 }
 
 /* --- Desktop (≥1024px): full content width, stat cards split into more
-       columns, and the login form is constrained for better readability. -- */
+       columns. -------------------------------------------------------- */
 @media (min-width: 1024px) {
   .layout {
     max-width: var(--max-width);
-  }
-  #login-panel {
-    max-width: 420px;
   }
   .summary {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -465,24 +462,6 @@ form button[type="submit"] {
   height: 6px;
   border-radius: var(--radius-full);
   background: var(--text-subtle);
-}
-
-.badge.signed-in {
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
-}
-
-.badge.signed-in::before {
-  background: var(--success);
-}
-
-.badge.auth-disabled {
-  color: var(--warning);
-  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
-}
-
-.badge.auth-disabled::before {
-  background: var(--warning);
 }
 
 /* --- Messages ------------------------------------------------------------ */

@@ -108,24 +108,11 @@
           <path d="M20.2 14.4A8.5 8.5 0 0 1 9.6 3.8a8.5 8.5 0 1 0 10.6 10.6Z" fill="currentColor" />
         </svg>
       </button>
-      <span id="auth-status" class="badge">signed out</span>
     </div>
   </header>
 
   <main id="main" class="layout" tabindex="-1">
-    <section id="login-panel" class="card">
-      <h2>Sign in</h2>
-      <form id="login-form">
-        <label for="username">Username</label>
-        <input id="username" name="username" autocomplete="username" required />
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required />
-        <button type="submit">Sign in</button>
-      </form>
-      <p id="login-error" class="error" hidden></p>
-    </section>
-
-    <section id="chat-panel" class="card" hidden>
+    <section id="chat-panel" class="card">
       <h2 id="chat-heading">Ask a question</h2>
       <!-- Screen-reader-only polite live region: announces new assistant answers,
            blocked requests, and errors without moving visual focus. -->
@@ -151,7 +138,7 @@
       </form>
     </section>
 
-    <section id="dashboard-panel" class="card" hidden>
+    <section id="dashboard-panel" class="card">
       <h2 id="dashboard-heading">Dashboard</h2>
       <p class="muted small">This session only — a fresh visit always starts at zero.</p>
       <div id="summary" class="summary"></div>

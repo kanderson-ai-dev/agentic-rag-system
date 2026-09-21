@@ -15,7 +15,6 @@ JS_MODULES = [
     "/js/toast.js",
     "/js/markdown.js",
     "/js/api.js",
-    "/js/auth.js",
     "/js/chat.js",
     "/js/review.js",
     "/js/dashboard.js",
@@ -193,26 +192,30 @@ def test_branding_phase3_logo_favicon_and_metadata() -> None:
     assert ".logo" in css
 
 
-def test_branding_phase3_auth_status_states() -> None:
-    """Phase 3: the header badge has distinct auth states.
+def test_no_login_gate_chat_and_dashboard_are_immediately_visible() -> None:
+    """The frontend has no login gate: it is open by design.
 
-    Asserts the JS keeps the auth-status badge in mutually-exclusive, clearly
-    distinguishable states ("signed in", "signed out", "auth disabled") rather
-    than relying on a single ambiguous label.
+    The public demo must never show a sign-in screen. Asserts the markup has
+    no login form/panel and that the chat and dashboard panels are not hidden
+    behind any auth check.
     """
     client = TestClient(app)
+    html = client.get("/").text
     js = read_js(client)
-    css = client.get("/styles.css").text
     client.close()
 
-    # A single helper renders the three states, removing any prior state class.
-    assert "function setAuthStatus" in js
-    assert "auth-disabled" in js
-    assert "signed-in" in js
+    # No login markup at all.
+    assert 'id="login-panel"' not in html
+    assert 'id="login-form"' not in html
+    assert "Sign in" not in html
 
-    # Each state has dedicated visual treatment (distinct token colors).
-    assert ".badge.auth-disabled" in css
-    assert ".badge.signed-in" in css
+    # Chat and dashboard are visible without any prior auth step.
+    assert '<section id="chat-panel" class="card">' in html
+    assert '<section id="dashboard-panel" class="card">' in html
+
+    # No client-side auth gate/login flow remains.
+    assert "auth/status" not in js
+    assert "auth/login" not in js
 
 
 def test_chat_phase4_xss_safe_markdown_rendering() -> None:

@@ -9,13 +9,12 @@ Servido por FastAPI vía `StaticFiles` montado en `/` (ver `app/main.py`).
 | ----------------- | ------------------------------------------------------------------ |
 | `index.html`      | Marcado semántico + metadatos (SEO/OG/Twitter), logo y favicon SVG inline, script que aplica el tema antes del primer *paint* (anti-FOUC). |
 | `styles.css`      | Design system: tokens, reset, componentes base, temas claro/oscuro, layout responsive. |
-| `js/app.js`       | **Entrypoint** (ES module). Orquesta los módulos, cablea dependencias cruzadas y arranca el auth gate. Único módulo con efectos laterales al importarse. |
+| `js/app.js`       | **Entrypoint** (ES module). Orquesta los módulos y cablea dependencias cruzadas. Único módulo con efectos laterales al importarse. No hay auth gate: el chat y el dashboard están disponibles de inmediato. |
 | `js/util.js`      | Helpers puros sin efectos: `$`, `$$`, `el`, `getSessionId`, `debounce`. |
 | `js/theme.js`     | Toggle de tema claro/oscuro y persistencia en `localStorage`. |
 | `js/toast.js`     | Notificaciones transitorias (`showToast`), anuncios `aria-live` (`announce`) y manejo global de errores. |
 | `js/markdown.js`  | Renderer de Markdown **saneado** (sin XSS), construye DOM con `textContent`/`createElement`. |
-| `js/api.js`       | Wrapper `fetch` autenticado (JWT en memoria) + `X-Session-Id`. |
-| `js/auth.js`      | Auth gate (`/auth/status`) y flujo de login. |
+| `js/api.js`       | Wrapper `fetch` + `X-Session-Id`. Sin flujo de login: la UI nunca envía credenciales. |
 | `js/chat.js`      | Experiencia de chat: mensajes, typing, copiar, composer adaptativo, envío de query. |
 | `js/review.js`    | Modal de revisión humana (HITL). |
 | `js/dashboard.js` | Dashboard: métricas, tabla ordenable/paginada, gráfico SVG y Quality (EDD). |
@@ -25,11 +24,11 @@ Servido por FastAPI vía `StaticFiles` montado en `/` (ver `app/main.py`).
 El frontend usa **módulos ES nativos** (`<script type="module">`), sin build step
 ni bundler — el navegador los carga con `import`/`export` relativos. Ventajas:
 
-- **Sin estado global innecesario**: el token JWT, el `thread_id`, el estado del
-  composer y del modal viven en el *scope* de su módulo (no en `window`), y se
-  comparten entre módulos mediante *accessors* explícitos (`getThreadId`,
-  `setAccessToken`, …) o *callbacks inyectados* (`wireChat`, `wireReview`,
-  `wireAuth`), evitando imports circulares.
+- **Sin estado global innecesario**: el `thread_id`, el estado del composer y
+  del modal viven en el *scope* de su módulo (no en `window`), y se comparten
+  entre módulos mediante *accessors* explícitos (`getThreadId`, …) o
+  *callbacks inyectados* (`wireChat`, `wireReview`), evitando imports
+  circulares.
 - **Dependencias unidireccionales**: `app.js` es el único que conoce el grafo de
   inicialización; cada módulo expone un `init*` idempotente.
 - **`debounce` en inputs**: los manejadores de alta frecuencia (`resize` que
@@ -46,9 +45,6 @@ ni bundler — el navegador los carga con `import`/`export` relativos. Ventajas:
 - **Metadatos**: `<title>` descriptivo, `<meta name="description">`,
   `theme-color` (variantes claro/oscuro vía `media`), y Open Graph + Twitter Card
   para que el enlace genere un preview rico al compartirse.
-- **Estados del header**: el badge de auth tiene tres estados mutuamente
-  excluyentes y visualmente distintos — *signed in*, *signed out* y
-  *auth disabled* — gestionados por `setAuthStatus()` en `app.js`.
 
 ## Design system (tokens)
 
@@ -79,7 +75,7 @@ Dos temas definidos como bloques de tokens: `[data-theme="dark"]` (por defecto) 
   estados `:hover`, `:active`, `:disabled` y foco visible.
 - **Inputs / textarea**: estados `:focus` con anillo de acento.
 - **Cards**: `.card`.
-- **Badges**: `.badge` (+ `.signed-in`).
+- **Badges**: `.badge`.
 - **Tablas**: `table.recent` (envuelta en `.table-wrap` para scroll horizontal
   propio en pantallas estrechas, sin romper el scroll de la página).
 - **Stats**: `.stat` (+ `.quality-stat.pass/.fail`).
@@ -162,7 +158,7 @@ scroll horizontal en ningún tamaño.
 | ---------- | ----------------------- | ---------------------------------------------------------- |
 | Móvil      | (base)                  | `.layout` a una columna, gutters compactos, header sticky con título truncado (ellipsis). |
 | Tablet     | `--bp-tablet` (≥640px)  | Gutters y padding de cards más amplios; padding del header. |
-| Escritorio | `--bp-desktop` (≥1024px)| Formulario de login acotado, stats en más columnas. |
+| Escritorio | `--bp-desktop` (≥1024px)| Stats en más columnas. |
 
 Convenciones de jerarquía y espaciado:
 
@@ -176,7 +172,6 @@ Convenciones de jerarquía y espaciado:
 
 - El contenido dinámico se inserta con `textContent` (o `innerHTML` solo para
   estructura estática conocida); **nunca** se renderiza salida del LLM sin sanear.
-- El JWT se guarda en memoria (no `localStorage`) para reducir robo vía XSS.
 - `prefers-reduced-motion` desactiva animaciones y transiciones.
 
 ## Accesibilidad y seguridad (Fase 7)

@@ -206,11 +206,13 @@ graph TD
 - **Self-RAG correction loop** — retrieve → grade → generate / rewrite / escalate. The system
   critiques its own context before generating, refusing to answer from weak context.
 - **Human-in-the-loop** — escalation with approve / retry / override when auto-correction fails.
-- **JWT authentication** — single-user login with bcrypt + rate-limited `/auth/login`.
+- **JWT authentication (API-level, optional)** — single-user login with bcrypt +
+  rate-limited `/auth/login`, off by default (open quickstart) so the public demo
+  needs no credentials; the frontend never gates on it.
 - **Input/output guardrails** — prompt-injection detection and output screening (OWASP LLM01/LLM02).
 - **Cost tracking & latency** — per-node Prometheus metrics + SQLite usage store.
 - **Evaluation (EDD)** — RAGAS-style scorecards versioned in git with strict quality gates.
-- **Frontend** — dependency-free dark-theme UI (login, chat, review, dashboard).
+- **Frontend** — dependency-free dark-theme UI (chat, human review, dashboard), open by design.
 
 ## Tech Stack
 
@@ -240,8 +242,8 @@ tests/               # pytest suite
 | `LANGCHAIN_API_KEY` | no | ✅ | LangSmith observability |
 | `PINECONE_API_KEY` | no | ✅ | vector store (else Chroma local) |
 | `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | no | ✅ | graph store (else NetworkX local) |
-| `JWT_SECRET_KEY` | no | ✅ | enable auth (else open quickstart) |
-| `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` | no | ✅ | single-user login |
+| `JWT_SECRET_KEY` | no | ✅ | enable API-level auth (else open quickstart; frontend has no login) |
+| `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` | no | ✅ | single-user login via `/api/v1/auth/login` |
 
 Never commit secrets. See `.env.example` for the full template.
 
