@@ -7,9 +7,21 @@ Servido por FastAPI vía `StaticFiles` montado en `/` (ver `app/main.py`).
 
 | Archivo      | Responsabilidad |
 | ------------ | ------------------------------------------------------------------ |
-| `index.html` | Marcado semántico + script inline que aplica el tema antes del primer *paint* (anti-FOUC). |
+| `index.html` | Marcado semántico + metadatos (SEO/OG/Twitter), logo y favicon SVG inline, script que aplica el tema antes del primer *paint* (anti-FOUC). |
 | `styles.css` | Design system: tokens, reset, componentes base, temas claro/oscuro, layout responsive. |
 | `app.js`     | Lógica: auth gate, chat, modal de revisión humana (HITL), dashboard, toggle de tema. |
+
+## Branding y metadatos
+
+- **Logo y favicon**: SVG inline (sin archivos binarios externos ni build step).
+  El favicon se sirve como *data URI* (portable, sin request extra); el logo del
+  header usa `currentColor`/tokens del design system para adaptarse al tema.
+- **Metadatos**: `<title>` descriptivo, `<meta name="description">`,
+  `theme-color` (variantes claro/oscuro vía `media`), y Open Graph + Twitter Card
+  para que el enlace genere un preview rico al compartirse.
+- **Estados del header**: el badge de auth tiene tres estados mutuamente
+  excluyentes y visualmente distintos — *signed in*, *signed out* y
+  *auth disabled* — gestionados por `setAuthStatus()` en `app.js`.
 
 ## Design system (tokens)
 

@@ -74,11 +74,23 @@ async function api(path, options = {}) {
 // Without this check, a deployment that leaves JWT_SECRET_KEY/AUTH_USERNAME/
 // AUTH_PASSWORD_HASH unset (open quickstart mode) would show a sign-in form
 // that can never succeed, hiding the chat/dashboard behind it.
+
+// The header badge has three mutually-exclusive states, rendered distinctly:
+//   * "signed out"   (default) — auth is enabled and no valid token is held.
+//   * "signed in"    — auth is enabled and a token was issued this session.
+//   * "auth disabled" — auth is not configured (open quickstart mode).
+function setAuthStatus(text, state) {
+  const el = $("#auth-status");
+  el.textContent = text;
+  el.classList.remove("signed-in", "auth-disabled");
+  if (state) el.classList.add(state);
+}
+
 async function initAuthGate() {
   try {
     const { auth_required: authRequired } = await api("/api/v1/auth/status");
     if (!authRequired) {
-      $("#auth-status").textContent = "auth disabled";
+      setAuthStatus("auth disabled", "auth-disabled");
       $("#login-panel").hidden = true;
       $("#chat-panel").hidden = false;
       $("#dashboard-panel").hidden = false;
@@ -103,8 +115,7 @@ $("#login-form").addEventListener("submit", async (event) => {
       }),
     });
     accessToken = result.access_token;
-    $("#auth-status").textContent = "signed in";
-    $("#auth-status").classList.add("signed-in");
+    setAuthStatus("signed in", "signed-in");
     $("#login-panel").hidden = true;
     $("#chat-panel").hidden = false;
     $("#dashboard-panel").hidden = false;

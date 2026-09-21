@@ -93,3 +93,65 @@ def test_layout_phase2_responsive_grid_and_breakpoints() -> None:
     assert 'class="table-wrap"' in html
     assert ".table-wrap" in css
     assert "overflow-x: auto" in css
+
+
+def test_branding_phase3_logo_favicon_and_metadata() -> None:
+    """Phase 3: inline logo, favicon, and share-ready metadata.
+
+    Asserts an inline SVG logo is present in the header, a favicon is declared
+    (via data URI, no extra asset), and the page ships Open Graph / Twitter
+    metadata plus `theme-color` so shared links unfurl correctly.
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    css = client.get("/styles.css").text
+    client.close()
+
+    # Inline logo (no external asset) wrapped in a brand block in the header.
+    assert 'class="brand"' in html
+    assert 'class="logo"' in html
+    assert "<svg" in html
+
+    # Favicon is declared (SVG data URI — portable, no build step).
+    assert 'rel="icon"' in html
+    assert 'type="image/svg+xml"' in html
+    assert 'data:image/svg+xml' in html
+
+    # Document metadata: title + description for SEO and link previews.
+    assert "<title>" in html
+    assert 'name="description"' in html
+
+    # theme-color adapts to the active theme (light + dark variants).
+    assert 'name="theme-color"' in html
+
+    # Open Graph + Twitter cards render a rich preview when shared.
+    assert 'property="og:title"' in html
+    assert 'property="og:description"' in html
+    assert 'name="twitter:card"' in html
+
+    # The logo inherits design tokens rather than hard-coding colors.
+    assert "var(--accent)" in html
+    assert ".brand" in css
+    assert ".logo" in css
+
+
+def test_branding_phase3_auth_status_states() -> None:
+    """Phase 3: the header badge has distinct auth states.
+
+    Asserts the JS keeps the auth-status badge in mutually-exclusive, clearly
+    distinguishable states ("signed in", "signed out", "auth disabled") rather
+    than relying on a single ambiguous label.
+    """
+    client = TestClient(app)
+    js = client.get("/app.js").text
+    css = client.get("/styles.css").text
+    client.close()
+
+    # A single helper renders the three states, removing any prior state class.
+    assert "function setAuthStatus" in js
+    assert "auth-disabled" in js
+    assert "signed-in" in js
+
+    # Each state has dedicated visual treatment (distinct token colors).
+    assert ".badge.auth-disabled" in css
+    assert ".badge.signed-in" in css

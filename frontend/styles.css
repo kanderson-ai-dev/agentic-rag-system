@@ -212,6 +212,8 @@ code {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0; /* allow the brand block to shrink so the title can truncate */
+  flex: 1 1 auto;
 }
 
 .brand .logo {
@@ -219,6 +221,11 @@ code {
   height: 26px;
   border-radius: 7px;
   display: block;
+  flex-shrink: 0; /* never squash the logo; only the title truncates */
+}
+
+.brand h1 {
+  min-width: 0; /* required for the ellipsis to kick in inside a nested flex */
 }
 
 .topbar-actions {
@@ -453,6 +460,15 @@ form button[type="submit"] {
 
 .badge.signed-in::before {
   background: var(--success);
+}
+
+.badge.auth-disabled {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+}
+
+.badge.auth-disabled::before {
+  background: var(--warning);
 }
 
 /* --- Messages ------------------------------------------------------------ */
