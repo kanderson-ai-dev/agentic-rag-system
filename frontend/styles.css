@@ -377,11 +377,6 @@ button.secondary:hover {
   background: var(--surface-inset);
 }
 
-.btn.danger,
-button.danger {
-  background: var(--danger);
-}
-
 .btn.ghost,
 button.ghost {
   background: transparent;
@@ -781,6 +776,10 @@ form button[type="submit"] {
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  /* Reserve vertical space so metric cards don't jump as values change
+     between refreshes (numbers like "$0.0000" vs "$0.1234" differ in width,
+     so only height is reserved — avoiding cumulative layout shift). */
+  min-height: 84px;
 }
 
 .stat .value {
@@ -819,6 +818,9 @@ form button[type="submit"] {
      of forcing horizontal page scroll. */
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  /* Reserve a stable height so the recent-requests region doesn't collapse
+     or jump when the table transitions between skeleton → data → empty. */
+  min-height: 120px;
 }
 
 table.recent {
@@ -921,6 +923,9 @@ button.th-sort:hover {
 /* --- Chart (SVG, no libraries) ------------------------------------------- */
 .chart-figure {
   margin: 0;
+  /* Reserve a consistent vertical slot so the dashboard doesn't shift when
+     the chart toggles between the empty state and a rendered series. */
+  min-height: 180px;
 }
 
 .chart {
@@ -1273,10 +1278,6 @@ dialog h2 {
 
 .toast.info {
   border-color: var(--accent);
-}
-
-.toast.isomorphic {
-  border-color: var(--warning);
 }
 
 .toast-text {

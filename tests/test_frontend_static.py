@@ -4,6 +4,28 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
+# The frontend is split into ES modules (Phase 8). The entrypoint is
+# `/js/app.js`, which imports the module files below. Tests assert against the
+# concatenated source so every feature can be located regardless of which
+# module it physically lives in.
+JS_MODULES = [
+    "/js/app.js",
+    "/js/util.js",
+    "/js/theme.js",
+    "/js/toast.js",
+    "/js/markdown.js",
+    "/js/api.js",
+    "/js/auth.js",
+    "/js/chat.js",
+    "/js/review.js",
+    "/js/dashboard.js",
+]
+
+
+def read_js(client: TestClient) -> str:
+    """Fetch every served JS module and return the concatenated source."""
+    return "\n".join(client.get(path).text for path in JS_MODULES)
+
 
 def test_serves_index_html() -> None:
     client = TestClient(app)
@@ -17,11 +39,47 @@ def test_serves_index_html() -> None:
 def test_serves_static_assets() -> None:
     client = TestClient(app)
     css = client.get("/styles.css")
-    js = client.get("/app.js")
+    js = client.get("/js/app.js")
     client.close()
 
     assert css.status_code == 200
     assert js.status_code == 200
+
+
+def test_phase8_es_modules_are_split_and_served() -> None:
+    """Phase 8: the app is split into reusable ES modules, each served.
+
+    Asserts the entrypoint is loaded as a module and that each module file is
+    independently served (200) and uses explicit import/export statements
+    rather than relying on a single monolithic script or global state.
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+
+    # The page loads the entrypoint as an ES module.
+    assert 'type="module"' in html
+    assert 'src="/js/app.js"' in html
+
+    # Every module is served and uses ES import/export syntax.
+    module_sources = {}
+    for path in JS_MODULES:
+        response = client.get(path)
+        assert response.status_code == 200
+        module_sources[path] = response.text
+
+    for source in module_sources.values():
+        # Every module must participate in the ES module graph.
+        assert ("import" in source) or ("export" in source)
+
+    # The entrypoint imports the feature modules.
+    assert "import" in module_sources["/js/app.js"]
+
+    source = "\n".join(module_sources.values())
+    client.close()
+
+    # Cross-module wiring uses injected callbacks; no reliance on window globals.
+    assert "window.chatBusy" not in source
+    assert "window.currentThreadId" not in source
 
 
 def test_api_routes_are_not_shadowed() -> None:
@@ -44,7 +102,7 @@ def test_design_system_phase1_theme_toggle_and_tokens() -> None:
     client = TestClient(app)
     html = client.get("/").text
     css = client.get("/styles.css").text
-    js = client.get("/app.js").text
+    js = read_js(client)
     client.close()
 
     # Theme toggle button present in the header, exposed to assistive tech.
@@ -143,7 +201,7 @@ def test_branding_phase3_auth_status_states() -> None:
     than relying on a single ambiguous label.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     css = client.get("/styles.css").text
     client.close()
 
@@ -166,7 +224,7 @@ def test_chat_phase4_xss_safe_markdown_rendering() -> None:
     never execute (OWASP recommendation: never render LLM output as HTML).
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -196,7 +254,7 @@ def test_chat_phase4_typing_loading_and_states() -> None:
     that offers a retry affordance rather than a dead end.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     css = client.get("/styles.css").text
     client.close()
 
@@ -222,7 +280,7 @@ def test_chat_phase4_copy_and_sources() -> None:
     as opaque text.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     css = client.get("/styles.css").text
     client.close()
 
@@ -245,7 +303,7 @@ def test_chat_phase4_adaptive_input_and_smart_scroll() -> None:
     reading earlier messages is never interrupted.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     css = client.get("/styles.css").text
     client.close()
 
@@ -319,7 +377,7 @@ def test_phase5_review_input_validation() -> None:
     so a decision can never reach the API without the payload it requires.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -343,7 +401,7 @@ def test_phase5_review_loading_and_error_states() -> None:
     closing it, so the user can correct and resubmit.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -367,7 +425,7 @@ def test_phase5_review_keyboard_operable() -> None:
     to open, choose, validate, or submit a decision.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -391,7 +449,7 @@ def test_phase6_metric_cards() -> None:
     driven by explicit formatter helpers rather than ad-hoc interpolation.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -419,7 +477,7 @@ def test_phase6_quality_eddsection() -> None:
     scorecard yet" message when the scorecard is absent.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -440,7 +498,7 @@ def test_phase6_chart_is_svg_without_libraries() -> None:
     accessible label via `role="img"`.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -466,7 +524,7 @@ def test_phase6_sortable_paginated_table() -> None:
     pagination, and numeric values are formatted with `ms`/`$` units.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     client.close()
 
@@ -493,7 +551,7 @@ def test_phase6_empty_and_loading_states() -> None:
     renders a blank or misleading table.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     html = client.get("/").text
     css = client.get("/styles.css").text
     client.close()
@@ -518,7 +576,7 @@ def test_phase7_live_announcements_and_roles() -> None:
     """
     client = TestClient(app)
     html = client.get("/").text
-    js = client.get("/app.js").text
+    js = read_js(client)
     client.close()
 
     # Conversation log keeps its live-region semantics.
@@ -563,7 +621,7 @@ def test_phase7_focus_management_on_dialog() -> None:
     users are never stranded after dismissing the modal.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     client.close()
 
     assert "lastFocusedElement" in js
@@ -580,7 +638,7 @@ def test_phase7_no_unsafe_innerhtml() -> None:
     path that could translate an XSS payload into executable markup.
     """
     client = TestClient(app)
-    js = client.get("/app.js").text
+    js = read_js(client)
     client.close()
 
     # The script never *assigns* to innerHTML (`.innerHTML =`), only mentions
@@ -601,7 +659,7 @@ def test_phase7_toasts_and_global_error_handling() -> None:
     """
     client = TestClient(app)
     html = client.get("/").text
-    js = client.get("/app.js").text
+    js = read_js(client)
     css = client.get("/styles.css").text
     client.close()
 

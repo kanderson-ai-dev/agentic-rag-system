@@ -5,11 +5,38 @@ Servido por FastAPI vía `StaticFiles` montado en `/` (ver `app/main.py`).
 
 ## Estructura
 
-| Archivo      | Responsabilidad |
-| ------------ | ------------------------------------------------------------------ |
-| `index.html` | Marcado semántico + metadatos (SEO/OG/Twitter), logo y favicon SVG inline, script que aplica el tema antes del primer *paint* (anti-FOUC). |
-| `styles.css` | Design system: tokens, reset, componentes base, temas claro/oscuro, layout responsive. |
-| `app.js`     | Lógica: auth gate, chat, modal de revisión humana (HITL), dashboard, toggle de tema. |
+| Archivo           | Responsabilidad |
+| ----------------- | ------------------------------------------------------------------ |
+| `index.html`      | Marcado semántico + metadatos (SEO/OG/Twitter), logo y favicon SVG inline, script que aplica el tema antes del primer *paint* (anti-FOUC). |
+| `styles.css`      | Design system: tokens, reset, componentes base, temas claro/oscuro, layout responsive. |
+| `js/app.js`       | **Entrypoint** (ES module). Orquesta los módulos, cablea dependencias cruzadas y arranca el auth gate. Único módulo con efectos laterales al importarse. |
+| `js/util.js`      | Helpers puros sin efectos: `$`, `$$`, `el`, `getSessionId`, `debounce`. |
+| `js/theme.js`     | Toggle de tema claro/oscuro y persistencia en `localStorage`. |
+| `js/toast.js`     | Notificaciones transitorias (`showToast`), anuncios `aria-live` (`announce`) y manejo global de errores. |
+| `js/markdown.js`  | Renderer de Markdown **saneado** (sin XSS), construye DOM con `textContent`/`createElement`. |
+| `js/api.js`       | Wrapper `fetch` autenticado (JWT en memoria) + `X-Session-Id`. |
+| `js/auth.js`      | Auth gate (`/auth/status`) y flujo de login. |
+| `js/chat.js`      | Experiencia de chat: mensajes, typing, copiar, composer adaptativo, envío de query. |
+| `js/review.js`    | Modal de revisión humana (HITL). |
+| `js/dashboard.js` | Dashboard: métricas, tabla ordenable/paginada, gráfico SVG y Quality (EDD). |
+
+### Modularización (Fase 8)
+
+El frontend usa **módulos ES nativos** (`<script type="module">`), sin build step
+ni bundler — el navegador los carga con `import`/`export` relativos. Ventajas:
+
+- **Sin estado global innecesario**: el token JWT, el `thread_id`, el estado del
+  composer y del modal viven en el *scope* de su módulo (no en `window`), y se
+  comparten entre módulos mediante *accessors* explícitos (`getThreadId`,
+  `setAccessToken`, …) o *callbacks inyectados* (`wireChat`, `wireReview`,
+  `wireAuth`), evitando imports circulares.
+- **Dependencias unidireccionales**: `app.js` es el único que conoce el grafo de
+  inicialización; cada módulo expone un `init*` idempotente.
+- **`debounce` en inputs**: los manejadores de alta frecuencia (`resize` que
+  redibuja el gráfico SVG) se desacoplan con `debounce` desde `util.js`.
+- **Sin *layout shift***: se reserva espacio vertical (`min-height`) en las
+  tarjetas de métricas, la región del gráfico y la tabla de requests recientes,
+  para que las transiciones *skeleton → datos → vacío* no desplacen el contenido.
 
 ## Branding y metadatos
 
@@ -165,9 +192,10 @@ Convenciones de jerarquía y espaciado:
 - **Contraste ≥ AA y `prefers-reduced-motion`**: paleta verificada contra el tema
   activo; el bloque `@media (prefers-reduced-motion: reduce)` colapsa todas las
   animaciones/transiciones (WCAG 2.3.3).
-- **Saneado total**: `app.js` **nunca** asigna a `innerHTML` — todo el contenido
-  dinámico (respuesta del LLM, dashboard, errores) usa `textContent`/`createElement`.
-  No existe ningún camino de código que traduzca un payload XSS en markup ejecutable.
+- **Saneado total**: los módulos ES (`js/*.js`) **nunca** asignan a `innerHTML` —
+  todo el contenido dinámico (respuesta del LLM, dashboard, errores) usa
+  `textContent`/`createElement`. No existe ningún camino de código que traduzca un
+  payload XSS en markup ejecutable.
 - **Toasts y manejo global de errores**: un contenedor `#toasts` (`role="status"`,
   `aria-live="polite"`) muestra notificaciones transitorias descartables
   (`showToast`), y los listeners globales `window.addEventListener("error")` y
