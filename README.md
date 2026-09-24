@@ -11,7 +11,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/badge/linting-ruff-red)](https://github.com/astral-sh/ruff)
 [![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)](https://mypy-lang.org/)
-![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ![The public landing answering a real question](docs/screenshots/demo.gif)
 
@@ -420,4 +420,4 @@ the Tailwind CDN origin only), and CI that uses `pull_request` (never
 
 ## License
 
-All Rights Reserved.
+[MIT](LICENSE)
