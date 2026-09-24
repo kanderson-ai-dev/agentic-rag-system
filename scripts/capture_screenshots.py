@@ -34,7 +34,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://127.0.0.1:8000"
 ROOT = Path(__file__).resolve().parent.parent
 SHOTS_DIR = ROOT / "docs" / "screenshots"
 SCORECARD_JSON = ROOT / "evaluation" / "results" / "ragas_scorecard.json"
@@ -77,8 +77,12 @@ def save_screenshot(locator_or_page, path: Path, **kwargs) -> None:
     raise last_error
 
 
-def capture_landing(browser) -> None:
-    """Screenshot the landing answering a real question; record a demo clip."""
+def capture_landing(browser) -> float:
+    """Screenshot the landing answering a real question; record a demo clip.
+
+    Returns the seconds of leading dead time in the recording (page-load
+    white flash before content paints) so the GIF conversion can trim it.
+    """
     with tempfile.TemporaryDirectory() as video_dir:
         context = browser.new_context(
             viewport={"width": 1280, "height": 900},
@@ -87,10 +91,20 @@ def capture_landing(browser) -> None:
             record_video_size={"width": 1280, "height": 900},
         )
         page = context.new_page()
+        # The recording clock starts roughly at page creation, so the dead
+        # time to trim is measured from here — measuring earlier would cut
+        # into the typing animation.
+        recording_start = time.monotonic()
         try:
             page.goto(BASE_URL + "/", wait_until="networkidle")
-            page.fill("#question", LANDING_QUESTION)
-            page.press("#question", "Enter")
+            loaded_at = time.monotonic()
+            # The recording doubles as demo.gif: hold on the empty landing,
+            # then type the question character by character so the viewer can
+            # read what is being sent — `fill` would pop it in instantly.
+            page.wait_for_timeout(900)
+            page.locator("#question").press_sequentially(LANDING_QUESTION, delay=55)
+            page.wait_for_timeout(350)
+            page.click("#ask-button")
             wait_for_ask_cycle(page, "#ask-button")
             # A transient backend error renders a Retry button — use it once.
             retry = page.locator("#answer [role='alert'] button")
@@ -99,11 +113,13 @@ def capture_landing(browser) -> None:
                 wait_for_ask_cycle(page, "#ask-button")
             page.wait_for_timeout(400)  # let source chips / fonts settle
             save_screenshot(page.locator("main"), SHOTS_DIR / "frontend.png")
+            page.wait_for_timeout(2000)  # let the clip linger on the answer
         finally:
             context.close()
         video_path = page.video.path() if page.video else None
         if video_path and Path(video_path).exists():
             shutil.copy(video_path, SHOTS_DIR / "demo.webm")
+        return loaded_at - recording_start
 
 
 def ask_console(page, question: str) -> None:
@@ -173,8 +189,13 @@ def capture_scorecard(browser) -> None:
         context.close()
 
 
-def maybe_make_gif() -> None:
-    """Convert demo.webm → demo.gif if an ffmpeg binary is available."""
+def maybe_make_gif(trim_seconds: float = 0.0) -> None:
+    """Convert demo.webm → demo.gif if an ffmpeg binary is available.
+
+    ``trim_seconds`` cuts the leading dead time (white flash while the page
+    loads) from the recording, keeping a short beat of idle landing before
+    the typing starts.
+    """
     webm = SHOTS_DIR / "demo.webm"
     gif = SHOTS_DIR / "demo.gif"
     if not webm.exists():
@@ -188,12 +209,16 @@ def maybe_make_gif() -> None:
     if not ffmpeg:
         print("ffmpeg not found — keeping demo.webm only (GIF skipped).")
         return
+    # Output-side -ss seeks accurately (input seek snaps to sparse keyframes).
+    trim = max(0.0, trim_seconds - 0.4)
     subprocess.run(
         [
             ffmpeg,
             "-y",
             "-i",
             str(webm),
+            "-ss",
+            f"{trim:.2f}",
             "-vf",
             "fps=10,scale=880:-1:flags=lanczos",
             str(gif),
@@ -209,11 +234,11 @@ def main() -> int:
     SHOTS_DIR.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        capture_landing(browser)
+        trim_seconds = capture_landing(browser)
         capture_console(browser)
         capture_scorecard(browser)
         browser.close()
-    maybe_make_gif()
+    maybe_make_gif(trim_seconds)
     for path in sorted(SHOTS_DIR.iterdir()):
         if path.suffix in {".png", ".gif"}:
             print(f"  {path.relative_to(ROOT)} ({path.stat().st_size // 1024} KB)")

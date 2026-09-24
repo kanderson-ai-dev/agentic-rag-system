@@ -303,7 +303,7 @@ cost = (prompt_tokens / 1_000_000 × input_price) + (completion_tokens / 1_000_0
 
 With `gpt-4o-mini` defaults (`$0.15` / 1M input, `$0.60` / 1M output), a query
 consuming 2,000 prompt + 500 completion tokens costs ≈ **$0.0006** — the live
-dashboard below shows real queries at **$0.0002** each:
+dashboard below shows real queries at **$0.0002–$0.0003** each:
 
 ![Dashboard — cost](docs/screenshots/dashboard-cost.png)
 
