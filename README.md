@@ -1,57 +1,122 @@
-# Agentic RAG Core: Hybrid Retrieval Engine
+<div align="center">
 
-> **Hybrid Knowledge Retrieval System integrating Structured Graph Context (Neo4j) + Unstructured Dense Embeddings (Pinecone) orchestrated by Self-Correcting AI Agents.**
+# 🤖 Agentic RAG & Knowledge Systems
 
-![CI](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml/badge.svg)
+**A Self-RAG microservice that proves its answers — hybrid retrieval, self-correction, human-in-the-loop, and quality gates enforced in CI, not vibes.**
 
-A **Self-RAG microservice** built with FastAPI and LangGraph, designed and operated
-under an **Evaluation Driven Development (EDD)** methodology: no change to prompts,
-retrieval, or graph architecture is considered "done" until it passes a set of
-versioned, quantitative quality thresholds — the same way TDD treats functional tests.
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-async%20API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-agent%20orchestration-1C3C3C)](https://github.com/langchain-ai/langgraph)
+[![CI](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml/badge.svg)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
+[![Ruff](https://img.shields.io/badge/linting-ruff-red)](https://github.com/astral-sh/ruff)
+[![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)](https://mypy-lang.org/)
+![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey)
 
-This is not a demo that "sometimes works"; it is a system with explicit quality,
-cost, and latency targets, verified automatically in CI on every change.
+![The public landing answering a real question](docs/screenshots/demo.gif)
 
-## Why Hybrid Retrieval? The Anti-Hallucination Strategy
-
-Traditional RAG systems rely solely on vector similarity search, which captures semantic
-meaning but often misses critical structural relationships between concepts. This limitation
-is a primary source of hallucinations — the LLM may generate plausible-sounding but
-factually incorrect answers because it lacks the full context of how concepts relate to
-each other.
-
-**This system implements hybrid retrieval to minimize hallucinations through three complementary mechanisms:**
-
-### 1. Dual-Source Context Fusion
-- **Vector Search (Pinecone/Chroma)**: Captures semantic similarity and surface-level meaning
-- **Graph Search (Neo4j/NetworkX)**: Captures structural relationships and entity connections
-- **Combined Context**: Every retrieved document carries traceable metadata — vector hits keep
-  their topic id (`source: "langgraph-overview"`, ...), graph hits are tagged
-  `source: "graph"`, `backend: "neo4j" | "networkx"` — so any answer can be audited back to
-  exactly which backend produced which piece of context
-
-### 2. Self-Correction Loop
-The Self-RAG pattern critiques its own retrieved context before generating:
-- If documents are graded as irrelevant → rewrite query and retry retrieval
-- If retries exhausted → escalate to human review instead of hallucinating
-- Output guardrail screens final answers for prompt leakage
-
-### 3. Measurable Quality Gates
-Every change must pass quantitative thresholds that directly measure hallucination risk:
-- **Faithfulness ≥ 0.85**: Does the answer stick to retrieved context?
-- **Context Precision ≥ 0.75**: Are retrieved documents actually relevant?
-- **Context Recall ≥ 0.75**: Did we retrieve all necessary information?
-
-**The hybrid approach is not just a technical choice — it's a strategic defense against hallucination.** By combining semantic similarity (vector) with structural knowledge (graph), the system provides the LLM with a richer, more complete context that dramatically reduces the need to "fill in gaps" with hallucinated content.
+</div>
 
 ---
 
-## Project Goal & Definition of Success
+## 📌 What this is
 
-The goal is to demonstrate, with measurable and reproducible evidence, the ability
-to design and operate a production agentic system. Every threshold below is
-recalculated and republished in this README whenever prompts, retrieval, or the
-model change.
+A **production-shaped Self-RAG microservice** built with FastAPI and LangGraph,
+operated under an **Evaluation Driven Development (EDD)** methodology: no change
+to prompts, retrieval, or graph architecture counts as "done" until it passes a
+set of versioned, quantitative quality thresholds — the same way TDD treats
+functional tests.
+
+This is the tier above a RAG demo: retrieval is hybrid (vector + graph),
+generation is graded against its own sources, low-confidence answers escalate
+to a human instead of hallucinating, and every number on this page is
+reproducible — `python evaluation/run_ragas.py` regenerates the scorecard, and
+the screenshots below are captured from the real running app by
+`scripts/capture_screenshots.py`.
+
+It demonstrates that I can **operate** an agentic system with measurable
+evidence — not just wire one up.
+
+---
+
+## 💡 Why this matters — for your project, or for a technical reviewer
+
+- 🚫 **Prompt injection burns zero tokens** — input guardrails screen every
+  request *before* it reaches retrieval or the LLM (OWASP LLM01); blocked input
+  short-circuits to a safe answer and never spends a cent.
+- 🧠 **It knows when it doesn't know** — the Self-RAG loop grades retrieved
+  context and rewrites the query when documents are weak; when retries run out
+  it pauses for human review (`interrupt()` / `Command(resume=...)`) instead of
+  inventing an answer.
+- 🔗 **Two sources of truth, fused** — vector search (Pinecone/Chroma) for
+  semantics + graph search (Neo4j/NetworkX) for structure. Every document
+  carries `source`/`backend` metadata, so any claim in an answer is auditable
+  back to the backend that produced it.
+- 📉 **Quality is a number, not a feeling** — RAGAS-style scorecards are
+  versioned in git and gated in CI; a regression in faithfulness fails the
+  build rather than getting shrugged off.
+- 💰 **Cost is accounted per query** — token usage flows into SQLite and
+  Prometheus with a documented budget (≤ $0.01/query) and a live dashboard.
+- 🖥️ **Two surfaces, one product decision** — `/` is a minimalist public
+  landing (one input, one answer — no login, no dashboard); `/console` is the
+  operator console with chat, live metrics, and the HITL review modal. The
+  first screen sells the answer; the second proves the machinery.
+- 🔓 **Open by design, auth when you need it** — the demo runs with zero
+  credentials; JWT + bcrypt + rate-limited `/auth/login` are ready when the API
+  needs protection.
+- 🧪 **CI green with zero secrets** — the suite (144 tests, 96% coverage on
+  `app/`) runs fully offline with stubs; cloud-backed paths skip cleanly
+  without credentials, so a fork clones and passes.
+
+---
+
+## 📊 Evaluation Results
+
+Measured with `python evaluation/run_ragas.py` (Pinecone + Neo4j,
+`gpt-4o-mini`) on a 7-question dataset (6 in-domain + 1 out-of-domain).
+
+| Metric | Latest | Target | Status |
+|---|---|---|---|
+| `faithfulness` | **0.90** | ≥ 0.85 | ✅ |
+| `answer_relevancy` | **0.90** | ≥ 0.85 | ✅ |
+| `context_precision` | **0.90** | ≥ 0.75 | ✅ |
+| `context_recall` | **0.90** | ≥ 0.75 | ✅ |
+| LLM-as-judge (1–5) | **4.83** | ≥ 4.0 | ✅ |
+
+![RAGAS scorecard](docs/screenshots/ragas-scorecard.png)
+
+**Key insight**: hybrid retrieval clears the strict faithfulness threshold
+(≥ 0.85) — combining vector similarity with graph context measurably reduces
+hallucination risk compared to vector-only approaches.
+
+The scorecard is versioned in git (`evaluation/results/ragas_scorecard.json`),
+and the LLM-as-judge score is produced by a real, versioned **LangSmith
+experiment** (`python evaluation/run_evaluation.py`) — `langsmith.evaluate()`
+runs the 10-question dataset (`agentic-rag-system-eval`) with five evaluators
+per run (`faithfulness`, `answer_relevancy`, `context_precision`,
+`context_recall`, and the 1–5 `llm_as_judge` rubric for
+correctness/usefulness/safety), so every score is inspectable run-by-run, not
+just an aggregate.
+
+<!-- Screenshot — hidden until captured. This one requires an interactive
+     LangSmith session, so it is taken by hand: open the experiment produced by
+     `python evaluation/run_evaluation.py`, screenshot the comparison view with
+     the five evaluators visible, save it as
+     docs/screenshots/langsmith-experiment.png, then uncomment:
+> ![LangSmith experiment](docs/screenshots/langsmith-experiment.png)
+-->
+
+Trend history is tracked in `evaluation/results/TREND.md` (regenerated with
+`python evaluation/run_ragas.py --report`).
+
+---
+
+## 🎯 Project Goal & Definition of Success
+
+The goal is to demonstrate, with measurable and reproducible evidence, the
+ability to design and operate a production agentic system. Every threshold
+below is recalculated and republished in this README whenever prompts,
+retrieval, or the model change.
 
 | Dimension | Metric | Success threshold | Where it lives |
 |---|---|---|---|
@@ -66,111 +131,35 @@ model change.
 | Cost | avg cost per query (`gpt-4o-mini`) | ≤ $0.01 | `usage_store` + `/dashboard/summary` |
 | CI reliability | GitHub Actions build | green | `.github/workflows/ci.yml` |
 | Supply-chain security | `gitleaks` / `pip-audit` / CodeQL findings | 0 | CI |
-| Test coverage | `pytest --cov` | ≥ 80% on `app/` | CI |
+| Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 96%** | CI |
 | Static typing | `mypy` on `app/` | 0 errors | CI |
 
-## Evaluation Results
+---
 
-Measured with `python evaluation/run_ragas.py` (Pinecone + Neo4j, `gpt-4o-mini`)
-on a 7-question dataset (6 in-domain + 1 out-of-domain).
+## 🧠 Why Hybrid Retrieval? The Anti-Hallucination Strategy
 
-**Hybrid Retrieval Performance (Pinecone + Neo4j):**
+Traditional RAG relies solely on vector similarity, which captures semantics but
+misses structural relationships between concepts — a primary source of
+hallucinations, since the LLM "fills in gaps" when context is incomplete. This
+system attacks that on three fronts:
 
-| Metric | Latest | Target | Status |
-|---|---|---|---|
-| `faithfulness` | **0.8571** | ≥ 0.85 | ✅ |
-| `answer_relevancy` | **0.8571** | ≥ 0.85 | ✅ |
-| `context_precision` | **0.8571** | ≥ 0.75 | ✅ |
-| `context_recall` | **0.8571** | ≥ 0.75 | ✅ |
-| LLM-as-judge (1–5) | **4.83** | ≥ 4.0 | ✅ |
+1. **Dual-source context fusion** — vector search (Pinecone/Chroma) for semantic
+   similarity, graph search (Neo4j/NetworkX) for entity relationships. Vector
+   hits keep their topic id (`source: "langgraph-overview"`, …); graph hits are
+   tagged `source: "graph"`, `backend: "neo4j" | "networkx"`.
+2. **Self-correction loop** — documents are graded before generation; weak
+   context triggers a query rewrite, and exhausted retries escalate to human
+   review instead of hallucinating.
+3. **Measurable quality gates** — every change must pass the thresholds above:
+   faithfulness, context precision, and context recall directly measure
+   hallucination risk.
 
-**Key Insight**: The hybrid retrieval achieves the strict faithfulness threshold (≥ 0.85), demonstrating that combining vector search with graph context significantly reduces hallucination risk compared to vector-only approaches.
+The hybrid approach is not just a technical choice — it's a strategic defense
+against hallucination.
 
-Raw scorecard (`evaluation/results/ragas_scorecard.json`, versioned in git):
+---
 
-```json
-{
-  "faithfulness": 0.8571,
-  "answer_relevancy": 0.8571,
-  "context_precision": 0.8571,
-  "context_recall": 0.8571
-}
-```
-
-The LLM-as-judge score is produced by a real, versioned **LangSmith Experiment**
-(`python evaluation/run_evaluation.py`), which runs `langsmith.evaluate()` against the
-10-question dataset (`agentic-rag-system-eval`) with five evaluators registered per run —
-`faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`, and the 1–5
-`llm_as_judge` rubric (correctness / usefulness / safety) — so every score is inspectable
-run-by-run, not just an aggregate.
-
-<!-- Screenshot — hidden until captured. Open the experiment link above (or run
-     `python evaluation/run_evaluation.py` to generate a fresh one), screenshot the
-     comparison view, save it as docs/screenshots/langsmith-experiment.png, then uncomment:
-> ![LangSmith experiment](docs/screenshots/langsmith-experiment.png)
--->
-
-<!-- Screenshot — hidden until captured. Add docs/screenshots/ragas-scorecard.png
-     (terminal output or evaluation/results/ragas_scorecard.json) and uncomment:
-> ![Scorecard output](docs/screenshots/ragas-scorecard.png)
--->
-
-Trend history is tracked in `evaluation/results/TREND.md` (generated with
-`python evaluation/run_ragas.py --report`).
-
-## Cost Control
-
-Every request's token usage and cost are captured via a LangChain callback and
-stored in SQLite, then surfaced through the dashboard and Prometheus. Cost is
-computed as:
-
-```text
-cost = (prompt_tokens / 1_000_000 × input_price) + (completion_tokens / 1_000_000 × output_price)
-```
-
-With `gpt-4o-mini` defaults (`$0.15` / 1M input, `$0.60` / 1M output), a query
-that consumes 2,000 prompt tokens and 500 completion tokens costs:
-
-```text
-(2,000 / 1,000,000 × $0.15) + (500 / 1,000,000 × $0.60)
-= $0.0003 + $0.0003
-= $0.0006
-```
-
-Prices are configurable via `COST_INPUT_PRICE_PER_1M` / `COST_OUTPUT_PRICE_PER_1M`
-(defaults target `gpt-4o-mini`). Only numeric metadata is persisted — never the
-question or answer content.
-
-| Metric | Target |
-|---|---|
-| Average cost per query | ≤ $0.01 (documented context assumption) |
-| Cost attribution | 100% of queries recorded |
-
-<!-- Screenshot — hidden until capture exists. Add docs/screenshots/dashboard-cost.png
-     and uncomment:
-> ![Dashboard — cost](docs/screenshots/dashboard-cost.png)
--->
-
-## Performance & Latency Monitoring
-
-Per-node latency is exposed as Prometheus histograms, and per-request
-cost/latency is stored in the usage store. Live aggregates are available at:
-
-- `GET /api/v1/dashboard/summary` — total cost, average latency, blocked/escalated counts.
-- `GET /metrics` — `agent_node_latency_seconds` (histogram, per node),
-  `agent_llm_cost_usd_total`, `agent_blocked_requests_total`, `agent_human_review_total`.
-
-| Metric | Target |
-|---|---|
-| p50 end-to-end latency | ≤ 3 s (excluding HITL pauses) |
-| p95 end-to-end latency | ≤ 6 s |
-
-<!-- Screenshot — hidden until capture exists. Add docs/screenshots/dashboard-latency.png
-     and uncomment:
-> ![Dashboard — latency](docs/screenshots/dashboard-latency.png)
--->
-
-## Architecture
+## 🏗️ Architecture
 
 ```mermaid
 graph TD
@@ -187,32 +176,45 @@ graph TD
     generate --> output_guardrail --> END
 ```
 
-- **Hybrid retrieval** combines vector search (`pinecone`/`chroma`) and graph search
-  (`neo4j`/`networkx`) with metadata `source`/`backend` on every document. This dual-source
-  approach provides the LLM with both semantic similarity (vector) and structural relationships
-  (graph), dramatically reducing hallucination risk by eliminating context gaps.
-- **Guardrail-first**: malicious input is blocked before it reaches retrieval or the
-  LLM, and the final answer is screened for prompt leakage (OWASP LLM01/LLM02).
-- **Human-in-the-loop**: when the correction loop exhausts its retries, the graph
-  pauses via `interrupt()` and resumes with `Command(resume=...)`.
-- **Self-correction**: The system critiques its own retrieved context before generating,
-  rewriting queries when documents are insufficient rather than hallucinating from weak context.
+- **Guardrail-first**: malicious input is blocked before it reaches retrieval
+  or the LLM, and the final answer is screened for prompt leakage (OWASP
+  LLM01/LLM02).
+- **Self-correction**: the system critiques its own retrieved context before
+  generating, rewriting queries when documents are insufficient rather than
+  answering from weak context.
+- **Human-in-the-loop**: when the correction loop exhausts its retries, the
+  graph pauses via `interrupt()` and resumes with `Command(resume=...)` —
+  approve, retry with a revised question, or override the answer manually.
 
-## Features
+### Two frontend surfaces
 
-- **Hybrid retrieval for anti-hallucination** — Pinecone/Chroma (vector) + Neo4j/NetworkX (graph)
-  provides dual-source context (semantic + structural) to minimize hallucination risk, with
-  100% local fallback so the system works out of the box with no external accounts.
-- **Self-RAG correction loop** — retrieve → grade → generate / rewrite / escalate. The system
-  critiques its own context before generating, refusing to answer from weak context.
-- **Human-in-the-loop** — escalation with approve / retry / override when auto-correction fails.
+| Route | Surface |
+|---|---|
+| `/` | Minimalist public landing — one input, one grounded answer (Tailwind via CDN, no build step). |
+| `/console` | Operator console — chat, live cost/latency dashboard, and the accessible HITL review modal. |
+
+![The operator console dashboard](docs/screenshots/dashboard-latency.png)
+
+---
+
+## ⚡ Features
+
+- **Hybrid retrieval for anti-hallucination** — Pinecone/Chroma (vector) +
+  Neo4j/NetworkX (graph), with 100% local fallback so the system works out of
+  the box with no external accounts.
+- **Self-RAG correction loop** — retrieve → grade → generate / rewrite /
+  escalate.
+- **Human-in-the-loop** — approve / retry / override when auto-correction fails.
+- **Input/output guardrails** — prompt-injection detection and output screening
+  (OWASP LLM01/LLM02).
 - **JWT authentication (API-level, optional)** — single-user login with bcrypt +
-  rate-limited `/auth/login`, off by default (open quickstart) so the public demo
-  needs no credentials; the frontend never gates on it.
-- **Input/output guardrails** — prompt-injection detection and output screening (OWASP LLM01/LLM02).
-- **Cost tracking & latency** — per-node Prometheus metrics + SQLite usage store.
-- **Evaluation (EDD)** — RAGAS-style scorecards versioned in git with strict quality gates.
-- **Frontend** — dependency-free dark-theme UI (chat, human review, dashboard), open by design.
+  rate-limited `/auth/login`, off by default (open quickstart).
+- **Cost tracking & latency** — per-node Prometheus metrics + SQLite usage
+  store.
+- **Evaluation (EDD)** — RAGAS-style scorecards versioned in git with strict
+  quality gates.
+- **Frontend** — minimalist landing at `/` + full operator console at
+  `/console`; dependency-free ES modules, no build step.
 
 ## Tech Stack
 
@@ -228,9 +230,31 @@ app/
 ├── graph/           # state, nodes, edges, graph, prompts, guardrails
 └── services/        # llm, vector_store, graph_store, usage_store
 evaluation/          # dataset, evaluators, run_ragas, run_evaluation
-frontend/            # index.html, styles.css, app.js
+frontend/
+├── landing/         # minimalist public landing (`/`, Tailwind via CDN)
+├── console/         # operator console (`/console`: chat, dashboard, HITL modal)
+└── js/              # shared ES modules (util, api, markdown) + landing.js
+scripts/             # ingest_knowledge_base, capture_screenshots
 tests/               # pytest suite
+docs/screenshots/    # real captures referenced by this README
 ```
+
+## 🚀 Quick Start
+
+```bash
+# 1. Install dependencies
+uv sync
+
+# 2. Configure environment
+cp .env.example .env   # then fill in OPENAI_API_KEY
+
+# 3. Run
+uv run uvicorn app.main:app --reload
+```
+
+Open `http://localhost:8000/` for the public landing (ask a question — no login
+needed), `http://localhost:8000/console` for the operator console, or
+`http://localhost:8000/docs` for the API.
 
 ## Environment Variables
 
@@ -249,9 +273,9 @@ Never commit secrets. See `.env.example` for the full template.
 
 ## Knowledge Base Content
 
-The system's knowledge base contains curated documentation about agentic AI concepts:
+The knowledge base contains curated documentation about agentic AI concepts:
 
-**Vector Store (Pinecone/Chroma):**
+**Vector store (Pinecone/Chroma):**
 - LangGraph overview (orchestration framework for stateful LLM applications)
 - Self-RAG pattern (self-critiquing retrieval before generation)
 - Human-in-the-loop patterns (interrupt() and checkpointers)
@@ -259,27 +283,54 @@ The system's knowledge base contains curated documentation about agentic AI conc
 - FastAPI overview (modern Python web framework)
 - LangGraph checkpointing (state persistence across invocations)
 
-**Graph Store (Neo4j/NetworkX):**
-- Structured relationships between concepts (e.g., `langgraph-overview → self-rag-pattern`)
-- Entity connections that capture structural knowledge beyond semantic similarity
-- Graph queries complement vector search by providing relational context
+**Graph store (Neo4j/NetworkX):**
+- Structured relationships between concepts (e.g.,
+  `langgraph-overview → self-rag-pattern`)
+- Entity connections that capture structural knowledge beyond semantic
+  similarity
 
-This dual-source approach ensures the LLM receives both semantic meaning (vector) and structural relationships (graph), significantly reducing hallucination risk by eliminating context gaps.
+This dual-source approach gives the LLM both semantic meaning and structural
+relationships, eliminating the context gaps that invite hallucination.
 
-## Quick Start
+## 💰 Cost Control
 
-```bash
-# 1. Install dependencies
-uv sync
+Every request's token usage and cost are captured via a LangChain callback and
+stored in SQLite, then surfaced through the dashboard and Prometheus:
 
-# 2. Configure environment
-cp .env.example .env   # then fill in OPENAI_API_KEY
-
-# 3. Run
-uv run uvicorn app.main:app --reload
+```text
+cost = (prompt_tokens / 1_000_000 × input_price) + (completion_tokens / 1_000_000 × output_price)
 ```
 
-Open `http://localhost:8000/` for the UI, or `http://localhost:8000/docs` for the API.
+With `gpt-4o-mini` defaults (`$0.15` / 1M input, `$0.60` / 1M output), a query
+consuming 2,000 prompt + 500 completion tokens costs ≈ **$0.0006** — the live
+dashboard below shows real queries at **$0.0002** each:
+
+![Dashboard — cost](docs/screenshots/dashboard-cost.png)
+
+Prices are configurable via `COST_INPUT_PRICE_PER_1M` /
+`COST_OUTPUT_PRICE_PER_1M`. Only numeric metadata is persisted — never the
+question or answer content.
+
+| Metric | Target |
+|---|---|
+| Average cost per query | ≤ $0.01 (documented context assumption) |
+| Cost attribution | 100% of queries recorded |
+
+## ⚡ Performance & Latency Monitoring
+
+Per-node latency is exposed as Prometheus histograms, and per-request
+cost/latency is stored in the usage store. Live aggregates:
+
+- `GET /api/v1/dashboard/summary` — total cost, average latency,
+  blocked/escalated counts.
+- `GET /metrics` — `agent_node_latency_seconds` (histogram, per node),
+  `agent_llm_cost_usd_total`, `agent_blocked_requests_total`,
+  `agent_human_review_total`.
+
+| Metric | Target |
+|---|---|
+| p50 end-to-end latency | ≤ 3 s (excluding HITL pauses) |
+| p95 end-to-end latency | ≤ 6 s |
 
 ## Docker Deployment
 
@@ -291,17 +342,17 @@ docker compose --profile graph up --build
 
 The image runs as a non-root user and injects secrets at runtime via `.env`.
 
-## Testing
+## 🧪 Testing
 
 ```bash
 uv run pytest -v                      # core suite (no credentials required)
-uv run pytest --cov=app               # coverage report
+uv run pytest --cov=app               # coverage report — 96% on app/ measured
 uv run ruff check .                   # lint
 uv run mypy app/                      # type check
 ```
 
-Optional-credential tests (Pinecone, Neo4j, evaluation) skip automatically when the
-relevant secrets are absent.
+Optional-credential tests (Pinecone, Neo4j, evaluation) skip automatically when
+the relevant secrets are absent.
 
 ## Reproduce the Evaluation Scorecard
 
@@ -314,14 +365,13 @@ python evaluation/run_evaluation.py       # runs a LangSmith experiment
 ## curl Examples
 
 ```bash
-# Login (returns a JWT)
+# Login (returns a JWT — only needed when auth is configured)
 curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"..."}'
 
-# Normal query
+# Normal query (Authorization header only when auth is enabled)
 curl -s -X POST http://localhost:8000/api/v1/rag/query \
-  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is LangGraph?"}'
 
@@ -337,38 +387,33 @@ curl -s -X POST http://localhost:8000/api/v1/rag/query/<thread_id>/review \
 
 # Out-of-domain query (demonstrates anti-hallucination)
 curl -s -X POST http://localhost:8000/api/v1/rag/query \
-  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is the capital of France?"}'
 # The system will respond that it doesn't know rather than hallucinating
 ```
 
-## Security
+## 🔒 Security
 
 See [`SECURITY.md`](SECURITY.md) for the full OWASP Top 10 and OWASP LLM Top 10
 mapping. Highlights: guardrail-first input handling, parameterized Cypher,
-`SecretStr` config, secret-redacting logs, and CI that uses `pull_request` (never
+`SecretStr` config, secret-redacting logs, a strict CSP (`script-src 'self'` +
+the Tailwind CDN origin only), and CI that uses `pull_request` (never
 `pull_request_target`) so external forks cannot read repository secrets.
-
-<!-- Demo video — hidden until recorded. Suggested 30-60 s script: normal question →
-     blocked injection attempt → HITL escalation (approve / retry / override) →
-     dashboard showing cost and latency. Once recorded, restore this section:
-
-## Demo Video
-
-![Demo](docs/screenshots/demo.gif)
--->
 
 ## Known Limitations & Next Steps
 
 - RAGAS metrics are implemented via a self-contained LLM-as-judge (the `ragas`
   package is currently incompatible with LangChain 1.x).
-- Neo4j Aura free tier "sleeps" after inactivity, so the first query after idle can
-  exceed the documented p95 latency.
+- Neo4j Aura free tier "sleeps" after inactivity, so the first query after idle
+  can exceed the documented p95 latency.
+- `mypy --strict` still reports pre-existing errors in `app/` (the configured
+  `mypy app/` passes with 0); strict-mode cleanup is tracked as a next step.
+- The `langsmith-experiment.png` capture is intentionally pending — it requires
+  an interactive LangSmith session (see `docs/screenshots/README.md`).
 - Single-user authentication (no multi-tenant admin).
 - SQLite checkpoints/usage are not migrated to Postgres.
-- Rate limiting is applied to `/auth/login` only (general API rate limiting is a
-  documented future improvement).
+- Rate limiting is applied to `/auth/login` only (general API rate limiting is
+  a documented future improvement).
 
 ## License
 
