@@ -20,8 +20,8 @@ _FAITHFULNESS_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a strict evaluator. Analyze whether the answer is fully grounded in the context. "
-            "Return a score from 0.0 to 1.0 where:\n"
+            "You are a strict evaluator. Analyze whether the answer is fully grounded "
+            "in the context. Return a score from 0.0 to 1.0 where:\n"
             "- 1.0: Answer is completely supported by context with no hallucinations\n"
             "- 0.5: Answer is partially supported but contains some unsupported claims\n"
             "- 0.0: Answer contains significant hallucinations or is not supported by context\n\n"
@@ -34,8 +34,8 @@ _ANSWER_RELEVANCY_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a strict evaluator. Analyze whether the answer directly addresses the question. "
-            "Return a score from 0.0 to 1.0 where:\n"
+            "You are a strict evaluator. Analyze whether the answer directly addresses "
+            "the question. Return a score from 0.0 to 1.0 where:\n"
             "- 1.0: Answer directly and completely addresses the question\n"
             "- 0.5: Answer partially addresses the question but is incomplete or tangential\n"
             "- 0.0: Answer does not address the question or is completely irrelevant\n\n"
@@ -48,7 +48,8 @@ _CONTEXT_PRECISION_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a strict evaluator. Analyze whether the retrieved context is relevant and precise for answering the question. "
+            "You are a strict evaluator. Analyze whether the retrieved context is "
+            "relevant and precise for answering the question. "
             "Return a score from 0.0 to 1.0 where:\n"
             "- 1.0: Context is highly relevant and precisely matches what's needed\n"
             "- 0.5: Context is somewhat relevant but contains noise or irrelevant information\n"
@@ -62,7 +63,8 @@ _CONTEXT_RECALL_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a strict evaluator. Analyze whether the retrieved context contains all information needed to answer the question. "
+            "You are a strict evaluator. Analyze whether the retrieved context contains "
+            "all information needed to answer the question. "
             "Return a score from 0.0 to 1.0 where:\n"
             "- 1.0: Context contains all necessary information to answer the question completely\n"
             "- 0.5: Context contains some relevant information but is missing key details\n"

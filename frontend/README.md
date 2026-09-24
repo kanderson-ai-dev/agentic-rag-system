@@ -1,198 +1,225 @@
 # Frontend
 
-Puro HTML/CSS/JS — sin framework, sin build step, sin dependencias externas.
-Servido por FastAPI vía `StaticFiles` montado en `/` (ver `app/main.py`).
+Plain HTML/CSS/JS — no framework, no build step, no external runtime
+dependencies beyond the Tailwind Play CDN on the landing. Served by FastAPI via
+`StaticFiles` mounts in `app/main.py`.
 
-## Estructura
+## Two surfaces
 
-| Archivo           | Responsabilidad |
-| ----------------- | ------------------------------------------------------------------ |
-| `index.html`      | Marcado semántico + metadatos (SEO/OG/Twitter), logo y favicon SVG inline, script que aplica el tema antes del primer *paint* (anti-FOUC). |
-| `styles.css`      | Design system: tokens, reset, componentes base, temas claro/oscuro, layout responsive. |
-| `js/app.js`       | **Entrypoint** (ES module). Orquesta los módulos y cablea dependencias cruzadas. Único módulo con efectos laterales al importarse. No hay auth gate: el chat y el dashboard están disponibles de inmediato. |
-| `js/util.js`      | Helpers puros sin efectos: `$`, `$$`, `el`, `getSessionId`, `debounce`. |
-| `js/theme.js`     | Toggle de tema claro/oscuro y persistencia en `localStorage`. |
-| `js/toast.js`     | Notificaciones transitorias (`showToast`), anuncios `aria-live` (`announce`) y manejo global de errores. |
-| `js/markdown.js`  | Renderer de Markdown **saneado** (sin XSS), construye DOM con `textContent`/`createElement`. |
-| `js/api.js`       | Wrapper `fetch` + `X-Session-Id`. Sin flujo de login: la UI nunca envía credenciales. |
-| `js/chat.js`      | Experiencia de chat: mensajes, typing, copiar, composer adaptativo, envío de query. |
-| `js/review.js`    | Modal de revisión humana (HITL). |
-| `js/dashboard.js` | Dashboard: métricas, tabla ordenable/paginada, gráfico SVG y Quality (EDD). |
+| Route | Surface | Directory |
+|---|---|---|
+| `/` | **Public landing** — one input, one button, one grounded answer. Fixed dark theme, Tailwind via CDN. | `frontend/landing/` |
+| `/console` | **Operator console** — full chat, metrics dashboard, and the HITL review modal. Token-based `styles.css`, light/dark themes. | `frontend/console/` |
+| `/js/*` | **Shared ES modules** imported by both surfaces (`util`, `api`, `markdown`) plus the landing entrypoint (`landing.js`). | `frontend/js/` |
 
-### Modularización (Fase 8)
+The split is a product decision: `/` is the 10-second first impression (ask a
+question, get a grounded answer — no login, no dashboard), while `/console`
+keeps the complete operator tooling for anyone who wants to dig deeper. When a
+landing query escalates to human review, the page shows an honest notice with a
+link to `/console` instead of exposing the operator-only review flow.
 
-El frontend usa **módulos ES nativos** (`<script type="module">`), sin build step
-ni bundler — el navegador los carga con `import`/`export` relativos. Ventajas:
+Console modules import the shared modules by absolute path (`/js/util.js`), so
+each surface's directory stays self-contained under its mount.
 
-- **Sin estado global innecesario**: el `thread_id`, el estado del composer y
-  del modal viven en el *scope* de su módulo (no en `window`), y se comparten
-  entre módulos mediante *accessors* explícitos (`getThreadId`, …) o
-  *callbacks inyectados* (`wireChat`, `wireReview`), evitando imports
-  circulares.
-- **Dependencias unidireccionales**: `app.js` es el único que conoce el grafo de
-  inicialización; cada módulo expone un `init*` idempotente.
-- **`debounce` en inputs**: los manejadores de alta frecuencia (`resize` que
-  redibuja el gráfico SVG) se desacoplan con `debounce` desde `util.js`.
-- **Sin *layout shift***: se reserva espacio vertical (`min-height`) en las
-  tarjetas de métricas, la región del gráfico y la tabla de requests recientes,
-  para que las transiciones *skeleton → datos → vacío* no desplacen el contenido.
+## Structure
 
-## Branding y metadatos
+| File | Responsibility |
+|---|---|
+| `landing/index.html` | Minimalist landing markup + metadata (SEO/OG/Twitter). Tailwind Play CDN (`https://cdn.tailwindcss.com`) — no `tailwind.config.js`, no build. |
+| `js/landing.js` | Landing logic: adaptive textarea, Enter-to-send, busy/skeleton/answer/error states, HITL escalation link to `/console`. |
+| `js/util.js` | Pure helpers: `$`, `$$`, `el`, `getSessionId`, `debounce`. |
+| `js/api.js` | `fetch` wrapper + `X-Session-Id`. No login flow: the UI never sends credentials. |
+| `js/markdown.js` | **Sanitized** Markdown renderer (no XSS), builds DOM with `textContent`/`createElement`. |
+| `console/index.html` | Console markup + metadata, inline SVG logo/favicon, anti-FOUC theme bootstrap script. |
+| `console/styles.css` | Console design system: tokens, reset, components, light/dark themes, responsive layout. |
+| `console/js/app.js` | Console **entrypoint** (ES module). Orchestrates modules and wires cross-dependencies. Only module with import-time side effects. No auth gate: chat and dashboard are available immediately. |
+| `console/js/theme.js` | Light/dark theme toggle persisted to `localStorage`. |
+| `console/js/toast.js` | Transient notifications (`showToast`), `aria-live` announcements (`announce`), global error handling. |
+| `console/js/chat.js` | Chat experience: messages, typing, copy, adaptive composer, query submission. |
+| `console/js/review.js` | Human-review modal (HITL). |
+| `console/js/dashboard.js` | Dashboard: metric cards, sortable/paginated table, SVG chart, Quality (EDD). |
 
-- **Logo y favicon**: SVG inline (sin archivos binarios externos ni build step).
-  El favicon se sirve como *data URI* (portable, sin request extra); el logo del
-  header usa `currentColor`/tokens del design system para adaptarse al tema.
-- **Metadatos**: `<title>` descriptivo, `<meta name="description">`,
-  `theme-color` (variantes claro/oscuro vía `media`), y Open Graph + Twitter Card
-  para que el enlace genere un preview rico al compartirse.
+## ES modules (no bundler)
 
-## Design system (tokens)
+Both surfaces use **native ES modules** (`<script type="module">`) — the browser
+loads them with `import`/`export`, no build step:
 
-Todo valor visual deriva de **custom properties** (variables CSS); no hay valores
-"mágicos" hardcodeados en los componentes.
+- **No unnecessary global state**: `thread_id`, composer state, and modal state
+  live in module scope (not `window`), shared via explicit accessors
+  (`getThreadId`, …) or injected callbacks (`wireChat`, `wireReview`) — no
+  circular imports.
+- **Unidirectional dependencies**: `app.js` is the only module that knows the
+  console's init graph; each module exposes an idempotent `init*`.
+- **`debounce` on high-frequency inputs**: the `resize` handler that redraws the
+  SVG chart is decoupled via `debounce` from `util.js`.
+- **No layout shift**: vertical space is reserved (`min-height`) in metric
+  cards, the chart region, the recent-requests table, and the landing answer
+  area, so skeleton → data → empty transitions never move content.
 
-- **Paleta** (`--bg`, `--surface*`, `--border*`, `--text*`, `--accent*`, `--success`,
-  `--danger`, `--warning`).
-- **Tipografía** (`--font-sans`, `--font-mono`, escala `--text-xs`…`--text-3xl`,
+## Branding and metadata
+
+- **Logo and favicon**: inline SVG (no external binary assets, no build step).
+  The favicon is served as a data URI (portable, no extra request); the console
+  header logo uses `currentColor`/design-system tokens to adapt to the theme.
+- **Metadata**: descriptive `<title>`, `<meta name="description">`,
+  `theme-color` (light/dark `media` variants on the console), and Open Graph +
+  Twitter Card so shared links unfurl richly.
+
+## Design system (console)
+
+Every visual value derives from **custom properties** (CSS variables); there are
+no hard-coded "magic" values in components.
+
+- **Palette** (`--bg`, `--surface*`, `--border*`, `--text*`, `--accent*`,
+  `--success`, `--danger`, `--warning`).
+- **Typography** (`--font-sans`, `--font-mono`, scale `--text-xs`…`--text-3xl`,
   `--leading-*`, `--weight-*`).
-- **Espaciado** base 4px (`--space-1`…`--space-7`).
-- **Radios** (`--radius-sm/md/lg/full`), **sombras** (`--shadow-sm/md/lg`) y
-  **transiciones** (`--transition-fast`, `--transition`).
+- **Spacing** base 4px (`--space-1`…`--space-7`).
+- **Radii** (`--radius-sm/md/lg/full`), **shadows** (`--shadow-sm/md/lg`) and
+  **transitions** (`--transition-fast`, `--transition`).
 
-### Temas
+### Themes
 
-Dos temas definidos como bloques de tokens: `[data-theme="dark"]` (por defecto) y
-`[data-theme="light"]`. El toggle en el header:
+Two themes defined as token blocks: `[data-theme="dark"]` (default) and
+`[data-theme="light"]`. The header toggle:
 
-1. Aplica el tema guardado en `localStorage` (`key = "theme"`) antes del primer
-   *paint* mediante un script inline en `<head>`.
-2. Si no hay preferencia guardada, respeta `prefers-color-scheme`.
-3. Al clickear, alterna el `data-theme` del `<html>` y persiste en `localStorage`.
+1. Applies the theme saved in `localStorage` (`key = "theme"`) before first
+   paint via an inline script in `<head>` (the only inline script — allowed by
+   CSP through its SHA-256 hash).
+2. Falls back to `prefers-color-scheme` when no preference is stored.
+3. On click, flips `<html>`'s `data-theme` and persists to `localStorage`.
 
-## Componentes base reutilizables
+The landing does not theme-switch: it is a single fixed dark theme, styled with
+Tailwind utilities.
 
-- **Botones**: `.btn` (primario) y variantes `.secondary`, `.danger`, `.ghost`, con
-  estados `:hover`, `:active`, `:disabled` y foco visible.
-- **Inputs / textarea**: estados `:focus` con anillo de acento.
+### Base reusable components
+
+- **Buttons**: `.btn` (primary) and `.secondary`, `.danger`, `.ghost` variants,
+  with `:hover`, `:active`, `:disabled`, and visible focus states.
+- **Inputs / textarea**: `:focus` accent ring.
 - **Cards**: `.card`.
 - **Badges**: `.badge`.
-- **Tablas**: `table.recent` (envuelta en `.table-wrap` para scroll horizontal
-  propio en pantallas estrechas, sin romper el scroll de la página).
+- **Tables**: `table.recent` (wrapped in `.table-wrap` for its own horizontal
+  scroll on narrow screens, without breaking page scroll).
 - **Stats**: `.stat` (+ `.quality-stat.pass/.fail`).
 
-## Experiencia de chat (Fase 4)
+## Chat experience (console)
 
-- **Markdown saneado (sin XSS)**: las respuestas del LLM se renderizan con un
-  *renderer* propio (`renderMarkdown` en `app.js`) que construye nodos DOM solo
-  con `textContent` / `createElement` — **nunca** asigna salida no confiable a
-  `innerHTML`. El HTML crudo en la respuesta se trata siempre como texto literal
-  (riesgo de XSS neutralizado por diseño). Subconjunto soportado: código fenced
-  e inline, headings, listas ordenadas/desordenadas, blockquotes, párrafos y
-  `**negrita**` / `*cursiva*`.
-- **Indicador "escribiendo…"** y estados de carga: burbuja con puntos animados
-  (`showTyping`/`hideTyping`) mientras la query está en vuelo; el botón *Send*
-  pasa a "*Sending…*" y se deshabilita hasta resolver.
-- **Copiar respuesta y fuentes**: cada respuesta trae un botón *Copy* (Clipboard
-  API con fallback a `execCommand("copy")`) y las fuentes recuperadas se
-  muestran como *chips* (`sources` del `QueryResponse`).
-- **Estados**: *welcome* (vacío), *loading* (typing), y *error* con reintento
+- **Sanitized Markdown (no XSS)**: LLM answers render through a custom renderer
+  (`renderMarkdown` in `js/markdown.js`, shared with the landing) that builds
+  DOM nodes only with `textContent`/`createElement` — untrusted output is
+  **never** assigned to `innerHTML`. Raw HTML in an answer is always literal
+  text (XSS neutralized by design). Supported subset: fenced and inline code,
+  headings, ordered/unordered lists, blockquotes, paragraphs, and
+  `**bold**` / `*italic*`.
+- **"Typing…" indicator and loading states**: animated-dots bubble
+  (`showTyping`/`hideTyping`) while a query is in flight; the *Send* button
+  switches to "*Sending…*" and stays disabled until resolved.
+- **Copy answer and sources**: each answer carries a *Copy* button (Clipboard
+  API with `execCommand("copy")` fallback) and retrieved sources render as
+  chips (`sources` field of `QueryResponse`).
+- **States**: welcome (empty), loading (typing), and error with retry
   (`addErrorWithRetry`).
-- **Auto-scroll inteligente** (solo si ya estás cerca del fondo) y **textarea
-  adaptativo** que crece con el contenido hasta un máximo.
+- **Smart auto-scroll** (only when already near the bottom) and an **adaptive
+  textarea** that grows with content up to a max height — the same composer
+  pattern the landing reuses.
 
-## Flujo de revisión humana — HITL (Fase 5)
+## Human review flow — HITL (console)
 
-Cuando el bucle de corrección Self-RAG agota sus reintentos, el grafo se pausa
-(`interrupt()`) y el frontend abre un **modal accesible** (`<dialog>`) para que
-un humano decida cómo continuar. Todo el flujo es operable solo con teclado.
+When the Self-RAG correction loop exhausts its retries, the graph pauses
+(`interrupt()`) and the console opens an **accessible modal** (`<dialog>`) so a
+human can decide how to continue. The whole flow is keyboard-operable.
 
-- **Modal accesible**: `<dialog>` nativo con `aria-labelledby` y
-  `aria-describedby`, **foco atrapado** y **cierre con `Esc`** (comportamiento
-  nativo del elemento). Al abrirse, el foco se mueve al primer control de
-  decisión.
-- **Tres opciones explicadas**: cada decisión es un *radio input* bajo un
-  `<fieldset>` (navegable con flechas), con su explicación visible:
-  - **Approve** — acepta la mejor respuesta disponible tal cual.
-  - **Retry** — re-ejecuta el retrieval con una pregunta revisada que tú
-    escribes.
-  - **Override** — escribes manualmente la respuesta correcta.
-- **Validación del input**: `retry`/`override` revelan un campo etiquetado; si
-  se envía vacío, se bloquea el envío y se muestra un error visible con foco
-  sobre el campo (se limpia al volver a escribir). Si no se eligió ninguna
-  opción, se pide elegir.
-- **Estados de carga/error**: al confirmar, el botón pasa a "*Submitting…*" y
-  se deshabilitan los controles; si la petición falla, el error se muestra
-  *dentro* del modal (`role="alert"`) y el modal permanece abierto para
-  corregir y reintentar — no se cierra ni se vuelca el error al chat.
+- **Accessible modal**: native `<dialog>` with `aria-labelledby` and
+  `aria-describedby`, **trapped focus** and **Esc to close** (native element
+  behavior). On open, focus moves to the first decision control.
+- **Three explained options**: each decision is a radio input under a
+  `<fieldset>` (arrow-key navigable) with a visible explanation:
+  - **Approve** — accept the best available answer as-is.
+  - **Retry** — re-run retrieval with a revised question you write.
+  - **Override** — write the correct answer manually.
+- **Input validation**: `retry`/`override` reveal a labelled field; submitting
+  empty blocks the action and shows a visible error with focus on the field
+  (cleared on typing). Choosing nothing asks for a choice.
+- **Loading/error states**: on confirm, the button switches to "*Submitting…*"
+  and controls disable; on failure the error shows **inside** the modal
+  (`role="alert"`) and the modal stays open to correct and resubmit — it never
+  closes nor dumps the error into the chat.
 
-## Dashboard (Fase 6)
+## Dashboard (console)
 
-El panel `#dashboard-panel` muestra datos reales del backend
-(`/api/v1/dashboard/summary`, `/recent` y `/quality`), todos escritos con
-`textContent` (nunca `innerHTML` con datos del servidor):
+The `#dashboard-panel` shows real backend data (`/api/v1/dashboard/summary`,
+`/recent`, `/quality`), all written with `textContent` (never `innerHTML` with
+server data):
 
-- **Tarjetas de métricas**: costo total (`$`), latencia promedio (`ms`),
-  requests bloqueados por el guardrail y escalados a revisión humana
-  (`renderSummary`).
-- **Quality (EDD)**: indicadores pass/fail por umbral del *scorecard* RAGAS
-  (`renderQuality`), con estado implícito "sin scorecard todavía".
-- **Gráfico de costo/latencia**: SVG inline construido con `createElementNS`
-  (sin librerías ni `<canvas>`) con dos series normalizadas — *latency* (acento)
-  y *cost* (éxito) — y una leyenda con el valor pico real de cada una
-  (`renderChart`).
-- **Tabla de requests recientes**: columnas ordenables por teclado (botones
-  `button.th-sort` con `aria-sort` en el `<th>`), paginación client-side
-  (`renderPagination`), y formatos `$`/`ms`/miles (`formatUsd`,
-  `formatLatency`, `formatTokens`).
-- **Estados vacío y cargando**: skeleton con *shimmer* mientras los datos están
-  en vuelo (`renderDashboardSkeleton`) y mensajes de vacío explícitos cuando no
-  hay actividad (`#recent-empty`, `#chart-empty`).
+- **Metric cards**: total cost (`$`), average latency (`ms`), requests blocked
+  by the guardrail and escalated to human review (`renderSummary`).
+- **Quality (EDD)**: pass/fail indicators per RAGAS scorecard threshold
+  (`renderQuality`), with an implicit "no scorecard yet" state.
+- **Cost/latency chart**: inline SVG built with `createElementNS` (no libraries,
+  no `<canvas>`) with two normalized series — *latency* (accent) and *cost*
+  (success) — plus a legend with each series' real peak (`renderChart`).
+- **Recent requests table**: keyboard-sortable columns (`button.th-sort` with
+  `aria-sort` on the `<th>`), client-side pagination (`renderPagination`), and
+  `$`/`ms`/thousands formats (`formatUsd`, `formatLatency`, `formatTokens`).
+- **Empty and loading states**: shimmer skeleton while data is in flight
+  (`renderDashboardSkeleton`) and explicit empty messages when there's no
+  activity (`#recent-empty`, `#chart-empty`).
 
-## Layout responsive (mobile-first)
+## Responsive layout (console, mobile-first)
 
-El layout es **mobile-first**: los estilos base apuntan a la pantalla más pequeña
-(móvil 320px) y se mejoran progresivamente con `min-width` media queries. No hay
-scroll horizontal en ningún tamaño.
+The layout is **mobile-first**: base styles target the smallest screen (320px
+mobile) and improve progressively with `min-width` media queries. No horizontal
+scroll at any size.
 
-| Breakpoint | Token CSS               | Qué cambia |
-| ---------- | ----------------------- | ---------------------------------------------------------- |
-| Móvil      | (base)                  | `.layout` a una columna, gutters compactos, header sticky con título truncado (ellipsis). |
-| Tablet     | `--bp-tablet` (≥640px)  | Gutters y padding de cards más amplios; padding del header. |
-| Escritorio | `--bp-desktop` (≥1024px)| Stats en más columnas. |
+| Breakpoint | CSS token | What changes |
+|---|---|---|
+| Mobile | (base) | `.layout` single column, compact gutters, sticky header with truncated (ellipsis) title. |
+| Tablet | `--bp-tablet` (≥640px) | Wider gutters and card padding; header padding. |
+| Desktop | `--bp-desktop` (≥1024px) | Stats in more columns. |
 
-Convenciones de jerarquía y espaciado:
+Hierarchy and spacing conventions:
 
-- Todo el contenido vive en `.layout` (CSS Grid, `minmax(0, 1fr)` para evitar
-  desbordes), alineado y centrado con `max-width: var(--max-width)`.
-- El header es `position: sticky` con `z-index` sobre el contenido.
-- Las tablas usan `.table-wrap` (`overflow-x: auto`) en vez de forzar scroll de
-  página en móvil.
+- All content lives in `.layout` (CSS Grid, `minmax(0, 1fr)` to prevent
+  overflow), aligned and centered with `max-width: var(--max-width)`.
+- The header is `position: sticky` with `z-index` above content.
+- Tables use `.table-wrap` (`overflow-x: auto`) instead of forcing page scroll
+  on mobile.
 
-## Convenciones
+## Content Security Policy
 
-- El contenido dinámico se inserta con `textContent` (o `innerHTML` solo para
-  estructura estática conocida); **nunca** se renderiza salida del LLM sin sanear.
-- `prefers-reduced-motion` desactiva animaciones y transiciones.
+`SecurityHeadersMiddleware` (`app/api/middleware.py`) sets a strict CSP on every
+response:
 
-## Accesibilidad y seguridad (Fase 7)
+- `default-src 'self'` — everything is same-origin by default.
+- `script-src 'self' 'sha256-…' https://cdn.tailwindcss.com` — the SHA-256 hash
+  covers the console's inline anti-FOUC theme bootstrap (the only inline
+  script); the Tailwind origin is allowed for the landing's no-build utility
+  CSS. Arbitrary inline/eval'd scripts remain forbidden.
+- `style-src 'self' 'unsafe-inline'` — required because the Tailwind CDN
+  injects its generated stylesheet as a `<style>` element at runtime.
+- `img-src 'self' data:` — for the inline SVG favicon.
 
-- **Anuncios en vivo (`aria-live`)**: la conversación es un `role="log"` polito y,
-  además, un *announcer* visualmente oculto (`#chat-announcer`, `aria-live="polite"`)
-  anuncia en voz alta eventos clave — "*Answer received*", "*A human review is
-  required*" y "*Request blocked by the input guardrail*" — sin mover el foco.
-- **Navegación por teclado completa**: *skip link* ("Skip to main content") que
-  salta al `<main id="main">` (con `tabindex="-1"`), y gestión explícita de foco
-  en el modal: al abrirse, el foco se mueve al primer *radio* de decisión y, al
-  cerrarse, se restaura al elemento que lo tenía antes (`lastFocusedElement`).
-- **Contraste ≥ AA y `prefers-reduced-motion`**: paleta verificada contra el tema
-  activo; el bloque `@media (prefers-reduced-motion: reduce)` colapsa todas las
-  animaciones/transiciones (WCAG 2.3.3).
-- **Saneado total**: los módulos ES (`js/*.js`) **nunca** asignan a `innerHTML` —
-  todo el contenido dinámico (respuesta del LLM, dashboard, errores) usa
-  `textContent`/`createElement`. No existe ningún camino de código que traduzca un
-  payload XSS en markup ejecutable.
-- **Toasts y manejo global de errores**: un contenedor `#toasts` (`role="status"`,
-  `aria-live="polite"`) muestra notificaciones transitorias descartables
-  (`showToast`), y los listeners globales `window.addEventListener("error")` y
-  `("unhandledrejection")` convierten fallos inesperados en una notificación
-  visible en lugar de morir en silencio en la consola.
+## Accessibility and security
+
+- **Live announcements (`aria-live`)**: the console conversation is a polite
+  `role="log"`, and a visually-hidden announcer (`#chat-announcer`,
+  `aria-live="polite"`) speaks key events — "*Answer received*", "*A human
+  review is required*", "*Request blocked by the input guardrail*" — without
+  moving focus. The landing answer region is itself a polite live region.
+- **Full keyboard navigation**: skip link ("Skip to main content") jumping to
+  `<main id="main">` (`tabindex="-1"`), and explicit focus management in the
+  modal: on open, focus moves to the first decision radio and, on close,
+  returns to the previously focused element (`lastFocusedElement`).
+- **Contrast ≥ AA and `prefers-reduced-motion`**: palette verified against the
+  active theme; the `@media (prefers-reduced-motion: reduce)` block collapses
+  all animations/transitions (WCAG 2.3.3).
+- **Total sanitization**: the ES modules **never** assign to `innerHTML` — all
+  dynamic content (LLM answer, dashboard, errors) uses
+  `textContent`/`createElement`. There is no code path that turns an XSS
+  payload into executable markup.
+- **Toasts and global error handling**: a `#toasts` container (`role="status"`,
+  `aria-live="polite"`) shows dismissible transient notifications
+  (`showToast`), and the global `window.addEventListener("error")` /
+  `("unhandledrejection")` listeners turn unexpected failures into a visible
+  notification instead of dying silently in the console.

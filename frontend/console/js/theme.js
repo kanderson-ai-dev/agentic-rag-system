@@ -1,7 +1,7 @@
 // Theme management: applies the persisted/OS preference before first paint
 // (see the inline bootstrap in index.html) and toggles between light/dark.
 
-import { $ } from "./util.js";
+import { $ } from "/js/util.js";
 
 const STORAGE_KEY = "theme";
 

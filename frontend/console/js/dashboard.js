@@ -4,8 +4,8 @@
 // written with `textContent` (never interpolated into innerHTML), and empty +
 // loading (skeleton) states are explicit.
 
-import { $, $$, debounce } from "./util.js";
-import { api } from "./api.js";
+import { $, $$, debounce } from "/js/util.js";
+import { api } from "/js/api.js";
 import { showToast } from "./toast.js";
 
 const DASHBOARD_PAGE_SIZE = 8;

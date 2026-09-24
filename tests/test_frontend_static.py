@@ -1,23 +1,42 @@
-"""Tests that the frontend static files are served without shadowing API routes."""
+"""Tests that the frontend static files are served without shadowing API routes.
+
+The frontend exposes two surfaces (PLAN-2, Phase 1):
+
+- ``/`` — the minimalist public landing (``frontend/landing/``).
+- ``/console`` — the full operator console: chat, dashboard, and the HITL
+  review modal (``frontend/console/``).
+
+Shared ES modules (``util``, ``api``, ``markdown``) live under ``/js/`` and are
+imported by both surfaces.
+"""
+
+import re
 
 from fastapi.testclient import TestClient
 
 from app.main import app
 
-# The frontend is split into ES modules (Phase 8). The entrypoint is
-# `/js/app.js`, which imports the module files below. Tests assert against the
-# concatenated source so every feature can be located regardless of which
-# module it physically lives in.
+# The operator console is split into ES modules (Phase 8). The entrypoint is
+# `/console/js/app.js`, which imports the console module files below plus the
+# shared modules under `/js/`. Tests assert against the concatenated source so
+# every feature can be located regardless of which module it lives in.
 JS_MODULES = [
-    "/js/app.js",
+    "/console/js/app.js",
     "/js/util.js",
-    "/js/theme.js",
-    "/js/toast.js",
+    "/console/js/theme.js",
+    "/console/js/toast.js",
     "/js/markdown.js",
     "/js/api.js",
-    "/js/chat.js",
-    "/js/review.js",
-    "/js/dashboard.js",
+    "/console/js/chat.js",
+    "/console/js/review.js",
+    "/console/js/dashboard.js",
+]
+
+LANDING_MODULES = [
+    "/js/landing.js",
+    "/js/util.js",
+    "/js/api.js",
+    "/js/markdown.js",
 ]
 
 
@@ -26,7 +45,8 @@ def read_js(client: TestClient) -> str:
     return "\n".join(client.get(path).text for path in JS_MODULES)
 
 
-def test_serves_index_html() -> None:
+def test_landing_serves_index_html() -> None:
+    """The public landing is served at `/`."""
     client = TestClient(app)
     response = client.get("/")
     client.close()
@@ -35,10 +55,20 @@ def test_serves_index_html() -> None:
     assert "text/html" in response.headers["content-type"]
 
 
+def test_console_serves_index_html() -> None:
+    """The operator console is served at `/console` (redirects to `/console/`)."""
+    client = TestClient(app)
+    response = client.get("/console")
+    client.close()
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+
+
 def test_serves_static_assets() -> None:
     client = TestClient(app)
-    css = client.get("/styles.css")
-    js = client.get("/js/app.js")
+    css = client.get("/console/styles.css")
+    js = client.get("/console/js/app.js")
     client.close()
 
     assert css.status_code == 200
@@ -46,18 +76,18 @@ def test_serves_static_assets() -> None:
 
 
 def test_phase8_es_modules_are_split_and_served() -> None:
-    """Phase 8: the app is split into reusable ES modules, each served.
+    """Phase 8: the console is split into reusable ES modules, each served.
 
     Asserts the entrypoint is loaded as a module and that each module file is
     independently served (200) and uses explicit import/export statements
     rather than relying on a single monolithic script or global state.
     """
     client = TestClient(app)
-    html = client.get("/").text
+    html = client.get("/console/").text
 
     # The page loads the entrypoint as an ES module.
     assert 'type="module"' in html
-    assert 'src="/js/app.js"' in html
+    assert 'src="/console/js/app.js"' in html
 
     # Every module is served and uses ES import/export syntax.
     module_sources = {}
@@ -71,7 +101,7 @@ def test_phase8_es_modules_are_split_and_served() -> None:
         assert ("import" in source) or ("export" in source)
 
     # The entrypoint imports the feature modules.
-    assert "import" in module_sources["/js/app.js"]
+    assert "import" in module_sources["/console/js/app.js"]
 
     source = "\n".join(module_sources.values())
     client.close()
@@ -99,9 +129,10 @@ def test_design_system_phase1_theme_toggle_and_tokens() -> None:
     choice to localStorage rather than leaving the theme hard-coded.
     """
     client = TestClient(app)
-    html = client.get("/").text
-    css = client.get("/styles.css").text
+    html = client.get("/console/").text
+    css = client.get("/console/styles.css").text
     js = read_js(client)
+    bootstrap = client.get("/console/js/theme-init.js")
     client.close()
 
     # Theme toggle button present in the header, exposed to assistive tech.
@@ -112,9 +143,13 @@ def test_design_system_phase1_theme_toggle_and_tokens() -> None:
     assert '[data-theme="light"]' in css
     assert ':root[data-theme="dark"]' in css or '[data-theme="dark"]' in css
 
-    # Theme persistence uses localStorage, not a session-only or hard-coded value.
+    # Theme persistence uses localStorage, not a session-only or hard-coded
+    # value. The anti-FOUC bootstrap is an external classic script (kept out of
+    # the ES-module graph so it can run before first paint).
     assert 'localStorage.setItem("theme", theme)' in js
-    assert 'localStorage.getItem("theme")' in html
+    assert bootstrap.status_code == 200
+    assert 'localStorage.getItem("theme")' in bootstrap.text
+    assert 'src="/console/js/theme-init.js"' in html
 
 
 def test_layout_phase2_responsive_grid_and_breakpoints() -> None:
@@ -126,8 +161,8 @@ def test_layout_phase2_responsive_grid_and_breakpoints() -> None:
     wrapped in a scroll container rather than overflowing the page at 320px.
     """
     client = TestClient(app)
-    html = client.get("/").text
-    css = client.get("/styles.css").text
+    html = client.get("/console/").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     # Main content is a single-column, overflow-safe grid.
@@ -160,8 +195,8 @@ def test_branding_phase3_logo_favicon_and_metadata() -> None:
     metadata plus `theme-color` so shared links unfurl correctly.
     """
     client = TestClient(app)
-    html = client.get("/").text
-    css = client.get("/styles.css").text
+    html = client.get("/console/").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     # Inline logo (no external asset) wrapped in a brand block in the header.
@@ -200,7 +235,7 @@ def test_no_login_gate_chat_and_dashboard_are_immediately_visible() -> None:
     behind any auth check.
     """
     client = TestClient(app)
-    html = client.get("/").text
+    html = client.get("/console/").text
     js = read_js(client)
     client.close()
 
@@ -228,7 +263,7 @@ def test_chat_phase4_xss_safe_markdown_rendering() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     # A dedicated renderer exists and constructs nodes with the safe DOM APIs,
@@ -258,7 +293,7 @@ def test_chat_phase4_typing_loading_and_states() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    css = client.get("/styles.css").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     # Typing indicator is driven by dedicated show/hide helpers.
@@ -284,7 +319,7 @@ def test_chat_phase4_copy_and_sources() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    css = client.get("/styles.css").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     # Copy-to-clipboard flow with a graceful fallback.
@@ -307,7 +342,7 @@ def test_chat_phase4_adaptive_input_and_smart_scroll() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    css = client.get("/styles.css").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     # Auto-growing textarea with an explicit max height.
@@ -331,8 +366,8 @@ def test_phase5_review_modal_accessible_dialog() -> None:
     buttons.
     """
     client = TestClient(app)
-    html = client.get("/").text
-    css = client.get("/styles.css").text
+    html = client.get("/console/").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     # Accessible dialog: labelled + described, not an anonymous overlay.
@@ -364,7 +399,7 @@ def test_phase5_review_options_explained() -> None:
     "retry with revised question", and "override with manual answer".
     """
     client = TestClient(app)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     assert "Accept the best-effort answer" in html
@@ -381,7 +416,7 @@ def test_phase5_review_input_validation() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     # Validation guards the submit path against missing input.
@@ -405,7 +440,7 @@ def test_phase5_review_loading_and_error_states() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     # Busy state: button relabelled and controls disabled while in flight.
@@ -429,7 +464,7 @@ def test_phase5_review_keyboard_operable() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     # Focus is moved to the first decision when the modal opens.
@@ -453,7 +488,7 @@ def test_phase6_metric_cards() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     # A summary container feeds the metric cards.
@@ -481,7 +516,7 @@ def test_phase6_quality_eddsection() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     assert 'id="quality"' in html
@@ -502,7 +537,7 @@ def test_phase6_chart_is_svg_without_libraries() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     # SVG is composed with createElementNS (no <canvas>, no external lib).
@@ -528,7 +563,7 @@ def test_phase6_sortable_paginated_table() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
+    html = client.get("/console/").text
     client.close()
 
     # Sortable column headers are real buttons (keyboard + click).
@@ -555,8 +590,8 @@ def test_phase6_empty_and_loading_states() -> None:
     """
     client = TestClient(app)
     js = read_js(client)
-    html = client.get("/").text
-    css = client.get("/styles.css").text
+    html = client.get("/console/").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     # Loading state: skeleton placeholders before real data arrives.
@@ -578,7 +613,7 @@ def test_phase7_live_announcements_and_roles() -> None:
     so screen readers hear "answer received" without focus jumping around.
     """
     client = TestClient(app)
-    html = client.get("/").text
+    html = client.get("/console/").text
     js = read_js(client)
     client.close()
 
@@ -604,8 +639,8 @@ def test_phase7_skip_link_and_main_landmark() -> None:
     2.4.1 (Bypass Blocks).
     """
     client = TestClient(app)
-    html = client.get("/").text
-    css = client.get("/styles.css").text
+    html = client.get("/console/").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     assert 'class="skip-link"' in html
@@ -661,9 +696,9 @@ def test_phase7_toasts_and_global_error_handling() -> None:
     silently in the console.
     """
     client = TestClient(app)
-    html = client.get("/").text
+    html = client.get("/console/").text
     js = read_js(client)
-    css = client.get("/styles.css").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     assert 'id="toasts"' in html
@@ -684,9 +719,141 @@ def test_phase7_reduced_motion_respected() -> None:
     transition durations, honoring WCAG 2.3.3 (no animation unless opted out).
     """
     client = TestClient(app)
-    css = client.get("/styles.css").text
+    css = client.get("/console/styles.css").text
     client.close()
 
     assert "@media (prefers-reduced-motion: reduce)" in css
     assert "animation-duration" in css
     assert "transition-duration" in css
+
+
+# --- PLAN-2 Phase 1: minimalist public landing at `/` ------------------------
+
+
+def test_landing_is_minimalist_single_input() -> None:
+    """The landing is one input + one button + one answer area — nothing else.
+
+    Asserts the public page has a single auto-growing textarea, an Ask button,
+    a reserved answer region, and none of the operator-console chrome (no
+    dashboard, no review modal, no theme toggle, no login).
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+    client.close()
+
+    # One composer: a textarea + an Ask submit button inside a single form.
+    assert 'id="ask-form"' in html
+    assert 'id="question"' in html
+    assert 'id="ask-button"' in html
+    assert re.search(r">\s*Ask\s*<", html)
+
+    # Reserved answer region announced politely to screen readers.
+    assert 'id="answer"' in html
+    assert 'aria-live="polite"' in html
+
+    # None of the operator console's UI leaks into the public landing.
+    assert 'id="dashboard-panel"' not in html
+    assert 'id="chat-panel"' not in html
+    assert 'id="review-modal"' not in html
+    assert 'id="theme-toggle"' not in html
+    assert 'id="login' not in html
+
+
+def test_landing_uses_tailwind_cdn_and_shared_modules() -> None:
+    """The landing uses Tailwind via CDN and reuses the shared ES modules.
+
+    Asserts the Tailwind Play CDN script tag is present (no build step), the
+    page loads `/js/landing.js` as a module, and that module imports the shared
+    api/markdown/util modules rather than reimplementing them.
+    """
+    client = TestClient(app)
+    html = client.get("/").text
+
+    for path in LANDING_MODULES:
+        response = client.get(path)
+        assert response.status_code == 200
+    client.close()
+
+    # Tailwind via CDN, no bundler.
+    assert "https://cdn.tailwindcss.com" in html
+    assert 'src="/js/landing.js"' in html
+    assert 'type="module"' in html
+
+    js = "\n".join(TestClient(app).get(path).text for path in LANDING_MODULES)
+
+    # The landing reuses the shared fetch wrapper and sanitized renderer.
+    assert 'from "./api.js"' in js
+    assert 'from "./markdown.js"' in js
+    assert "renderMarkdown" in js
+    # Never renders LLM output through innerHTML.
+    assert ".innerHTML" not in js
+
+
+def test_landing_submit_enter_key_and_states() -> None:
+    """The Ask button and Enter share one submit path; states are explicit.
+
+    Asserts a single keydown listener routes plain Enter (not Shift+Enter) to
+    the form submit, and that the JS implements the idle → loading → answer /
+    error-with-retry state machine.
+    """
+    client = TestClient(app)
+    js = client.get("/js/landing.js").text
+    html = client.get("/").text
+    client.close()
+
+    # One keydown listener, shared by the Ask button (form submit) and Enter.
+    assert 'addEventListener("keydown"' in js
+    assert 'event.key === "Enter" && !event.shiftKey' in js
+    assert "requestSubmit()" in js
+    assert 'addEventListener("submit"' in js
+
+    # Loading skeleton (no layout shift: min-height reserved in markup).
+    assert "animate-pulse" in js
+    assert "min-h-" in html
+
+    # Error state carries a retry affordance.
+    assert "Retry" in js
+    assert 'role", "alert"' in js or 'role="alert"' in js
+
+    # Busy state disables the composer while a query is in flight.
+    assert "Asking…" in js
+    assert "disabled" in js
+
+
+def test_landing_hitl_escalation_links_to_console() -> None:
+    """HITL escalations on the landing point to `/console`, not a modal.
+
+    The public landing must not expose the operator review modal; instead it
+    shows an honest message linking to the console where the full approve /
+    retry / override flow lives.
+    """
+    client = TestClient(app)
+    js = client.get("/js/landing.js").text
+    html = client.get("/").text
+    client.close()
+
+    # Interrupted queries render an escalation notice, not the review dialog.
+    assert '"interrupted"' in js
+    assert "/console" in js
+    assert "review" in js
+    assert "review-modal" not in html
+
+    # The landing footer links to the operator console.
+    assert 'href="/console"' in html
+
+
+def test_console_markup_is_served_under_console_prefix() -> None:
+    """The full operator console lives under `/console`, not `/`.
+
+    Asserts the console page carries the chat, dashboard, and review-modal
+    markup and pulls its assets from the `/console/` prefix.
+    """
+    client = TestClient(app)
+    html = client.get("/console/").text
+    client.close()
+
+    assert '<section id="chat-panel" class="card">' in html
+    assert '<section id="dashboard-panel" class="card">' in html
+    assert 'id="review-modal"' in html
+    assert 'href="/console/styles.css"' in html
+    assert 'src="/console/js/app.js"' in html

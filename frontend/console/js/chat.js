@@ -2,9 +2,9 @@
 // adaptive composer, and query submission. State is module-scoped and shared
 // through explicit getters/setters rather than globals.
 
-import { $ } from "./util.js";
-import { api } from "./api.js";
-import { renderMarkdown } from "./markdown.js";
+import { $ } from "/js/util.js";
+import { api } from "/js/api.js";
+import { renderMarkdown } from "/js/markdown.js";
 import { announce } from "./toast.js";
 
 // The current thread id, set after a query; needed by the review flow to
@@ -265,4 +265,4 @@ function initChat() {
   });
 }
 
-export { addAssistantMessage, initChat, sendQuestion, getThreadId };
+export { addAssistantMessage, initChat, sendQuestion };

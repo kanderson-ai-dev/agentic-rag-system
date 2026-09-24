@@ -25,25 +25,26 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Apply security headers to every response (OWASP A05).
 
-    The CSP keeps ``script-src`` to ``'self'`` plus a single hash for the
-    inline anti-FOUC theme bootstrap in ``frontend/index.html`` (the only
-    inline script; everything else is an external ES module under ``/js/``).
-    This forbids arbitrary inline/eval'd scripts while still letting the
-    theme apply before first paint. ``img-src`` additionally allows ``data:``
-    so the inline SVG favicon loads.
-    """
+    ``script-src`` is ``'self'`` plus a single narrow exception: the Tailwind
+    Play CDN origin used by the public landing (``frontend/landing/``) — the
+    landing has no build step, so the utility CSS is compiled in the browser.
+    All other scripts are external files under ``/js/`` or ``/console/js/``
+    (including the console's anti-FOUC theme bootstrap, kept external so no
+    fragile content hash is needed). Arbitrary inline/eval'd scripts stay
+    forbidden.
 
-    # SHA-256 (base64) of the inline theme-bootstrap script. Regenerate with:
-    #   python -c "import hashlib,base64; s=open('frontend/index.html').read(); \
-    #     m=__import__('re').search(r'<script>\\s*(.*?)\\s*</script>', s, __import__('re').S); \
-    #     print(base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"
-    _THEME_SCRIPT_HASH = "R3wic9bWfHJN9coXPA5E2AnFTEGN74be6rfe7Vtk8Jk="
+    ``style-src`` allows ``'unsafe-inline'`` because the Tailwind CDN injects
+    its generated stylesheet as a ``<style>`` element at runtime; style
+    injection cannot execute script, so the risk stays contained. ``img-src``
+    additionally allows ``data:`` so the inline SVG favicon loads.
+    """
 
     async def dispatch(self, request: Request, call_next) -> Response:
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'sha256-" + self._THEME_SCRIPT_HASH + "'; "
+            "script-src 'self' https://cdn.tailwindcss.com; "
+            "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"

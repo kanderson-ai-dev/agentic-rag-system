@@ -2,7 +2,7 @@
 // handling. Both toasts and the announcer are populated with plain text only
 // (never HTML), so nothing dynamic can inject markup.
 
-import { $ } from "./util.js";
+import { $ } from "/js/util.js";
 
 /**
  * Announce a message to screen readers via a visually-hidden polite live

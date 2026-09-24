@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite import SqliteSaver
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -65,8 +66,30 @@ def create_app() -> FastAPI:
     Instrumentator().instrument(app).expose(app)
     app.include_router(health_router)
     app.include_router(api_v1_router)
+
+    @app.get("/console", include_in_schema=False)
+    def console_redirect() -> RedirectResponse:
+        """Send `/console` to `/console/` so the console index is served."""
+        return RedirectResponse(url="/console/", status_code=308)
+
+    # Two static surfaces, no build step:
+    #   `/`        — minimalist public landing (frontend/landing/)
+    #   `/console` — full operator console: chat + dashboard + HITL review
+    #   `/js/*`    — ES modules shared by both surfaces (frontend/js/)
+    # The catch-all `/` mount is registered last so the more specific prefixes
+    # win. `/console` redirects to `/console/` (StaticFiles html=True).
     frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
-    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
+    app.mount(
+        "/console",
+        StaticFiles(directory=str(frontend_dir / "console"), html=True),
+        name="console",
+    )
+    app.mount("/js", StaticFiles(directory=str(frontend_dir / "js")), name="shared-js")
+    app.mount(
+        "/",
+        StaticFiles(directory=str(frontend_dir / "landing"), html=True),
+        name="landing",
+    )
     return app
 
 

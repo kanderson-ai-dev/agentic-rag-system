@@ -8,8 +8,8 @@
 //   * Submitting shows a busy state on the confirm button and disables the
 //     controls; failures surface inside the modal (with retry).
 
-import { $ } from "./util.js";
-import { api } from "./api.js";
+import { $ } from "/js/util.js";
+import { api } from "/js/api.js";
 import { addAssistantMessage, getThreadId } from "./chat.js";
 import { announce, showToast } from "./toast.js";
 

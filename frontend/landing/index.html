@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentic RAG — Ask the knowledge base</title>
+  <meta
+    name="description"
+    content="A Self-RAG microservice (FastAPI + LangGraph) with hybrid retrieval, human-in-the-loop review, and Evaluation Driven Development. Ask a question — get a grounded answer."
+  />
+  <meta name="author" content="Agentic RAG &amp; Knowledge Systems" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0a0a0a" />
+
+  <!-- Favicon: inline SVG (data URI) so the file is portable and needs no
+       extra asset to be served or cached. -->
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f6ef7'/%3E%3Cpath d='M16 7l7 4v6l-7 4-7-4v-6z' fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='17' r='2' fill='%23fff'/%3E%3C/svg%3E"
+  />
+
+  <!-- Open Graph (Facebook / LinkedIn / Slack unfurls) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Agentic RAG &amp; Knowledge Systems" />
+  <meta property="og:title" content="Agentic RAG — Ask the knowledge base" />
+  <meta
+    property="og:description"
+    content="Production-grade Self-RAG microservice with hybrid retrieval, human-in-the-loop, and Evaluation Driven Development."
+  />
+  <meta property="og:url" content="https://github.com/kanderson-ai-dev/agentic-rag-system" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card summary -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Agentic RAG — Ask the knowledge base" />
+  <meta
+    name="twitter:description"
+    content="Production-grade Self-RAG microservice with hybrid retrieval, human-in-the-loop, and Evaluation Driven Development."
+  />
+
+  <!-- Tailwind via CDN, no build step (allowed by CSP script-src). -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body
+  class="min-h-screen bg-neutral-950 font-sans text-neutral-200 antialiased selection:bg-indigo-500/30"
+>
+  <main class="mx-auto flex min-h-screen w-full max-w-2xl flex-col justify-center px-6 py-16">
+    <p class="text-xs font-medium uppercase tracking-[0.25em] text-indigo-400">
+      Agentic RAG · Self-correcting Q&amp;A
+    </p>
+    <h1 class="mt-4 text-4xl font-semibold tracking-tight text-neutral-50 sm:text-5xl">
+      Ask the knowledge base.
+    </h1>
+    <p class="mt-4 max-w-xl text-base leading-relaxed text-neutral-400">
+      Every answer is grounded in hybrid vector + graph retrieval, graded against its
+      own sources before it reaches you, and escalated to a human reviewer when
+      confidence runs out — instead of hallucinating.
+    </p>
+
+    <form id="ask-form" class="mt-10" novalidate>
+      <div
+        class="flex items-end gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-3 shadow-lg shadow-black/20 transition-colors focus-within:border-indigo-500/60"
+      >
+        <label for="question" class="sr-only">Your question</label>
+        <textarea
+          id="question"
+          rows="1"
+          required
+          placeholder="e.g. How does the Self-RAG correction loop work?"
+          class="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-base leading-relaxed text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+        ></textarea>
+        <button
+          id="ask-button"
+          type="submit"
+          class="shrink-0 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Ask
+        </button>
+      </div>
+      <p class="mt-2 px-1 text-xs text-neutral-500">
+        Enter to send · Shift+Enter for a new line
+      </p>
+    </form>
+
+    <!-- min-height reserves the answer slot so idle → loading → answer never
+         shifts the layout. -->
+    <section class="mt-10 min-h-28" aria-live="polite">
+      <div
+        id="answer"
+        class="text-base leading-relaxed text-neutral-200 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-neutral-700 [&_blockquote]:pl-4 [&_blockquote]:text-neutral-400 [&_code]:rounded [&_code]:bg-neutral-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-sm [&_code]:text-indigo-300 [&_h1]:mt-5 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:text-neutral-50 [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-neutral-50 [&_h3]:mt-4 [&_h3]:font-semibold [&_h3]:text-neutral-100 [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-3 [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-neutral-800 [&_pre]:bg-neutral-900 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-neutral-200 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6"
+      ></div>
+      <div id="answer-meta" class="mt-4"></div>
+    </section>
+
+    <footer class="mt-16 border-t border-neutral-900 pt-6">
+      <a
+        href="/console"
+        class="text-xs text-neutral-500 transition-colors hover:text-neutral-300"
+      >
+        Operator console — dashboard, metrics &amp; human review →
+      </a>
+    </footer>
+  </main>
+
+  <script type="module" src="/js/landing.js"></script>
+</body>
+</html>
