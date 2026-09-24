@@ -21,3 +21,13 @@ build/
 htmlcov/
 .idea/
 .vscode/
+
+# Planning / working documents — never published in the public repo
+PLAN.md
+PLAN-2.md
+AGENTS.md
+AGENTS_before.md
+README-example1.md
+README-example2.md
+README-example3.md
+OPENCODE_CHEATSHEET.md
