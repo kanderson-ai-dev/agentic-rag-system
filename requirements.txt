@@ -244,7 +244,7 @@ packaging==24.2
     #   limits
     #   onnxruntime
     #   pinecone-plugin-assistant
-pinecone==7.3.0
+pinecone==10.0.0
     # via langchain-pinecone
 pinecone-plugin-assistant==1.8.0
     # via pinecone
