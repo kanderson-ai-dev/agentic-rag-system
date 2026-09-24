@@ -31,6 +31,15 @@ class GraphState(TypedDict):
             short-circuits to `error_output` without touching retrieval/LLM.
         output_flagged: Set by the output guardrail node when the generated
             answer leaks the system prompt or reflects injected instructions.
+        speculative_generation: Answer generated in parallel with document
+            grading, using the full unfiltered retrieved context. Reused by
+            `generate_node` only when `speculative_context` and
+            `speculative_question` match what generation would use now —
+            i.e. when the grader kept every retrieved document.
+        speculative_context: The serialized context the speculative answer
+            was generated from.
+        speculative_question: The question the speculative answer was
+            generated for.
     """
 
     question: str
@@ -41,3 +50,6 @@ class GraphState(TypedDict):
     human_decision: str | None
     blocked: bool
     output_flagged: bool
+    speculative_generation: str
+    speculative_context: str
+    speculative_question: str

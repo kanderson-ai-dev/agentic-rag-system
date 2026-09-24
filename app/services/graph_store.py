@@ -50,6 +50,25 @@ _CYPHER_KEYWORDS = {
 
 _MAX_TERM_LENGTH = 200
 
+# English stopwords skipped when extracting graph-search terms from a natural
+# language question — they would match nearly every node's text.
+_GRAPH_SEARCH_STOPWORDS = {
+    "what", "how", "does", "the", "and", "for", "are", "with", "that", "this",
+    "from", "you", "your", "can", "could", "would", "should", "about", "tell",
+    "explain", "give", "show", "which", "who", "when", "where", "why", "there",
+    "here", "not", "yes", "any", "all", "some", "into", "out", "over", "under",
+    "again", "once", "just", "only", "very", "too", "also", "was", "were", "been",
+    "is", "a", "an", "of", "in", "to", "or", "on", "it", "its", "be", "by", "at",
+    "as", "do", "if", "then", "than", "so", "such", "i", "we", "they", "me", "my",
+    "their", "between", "work", "works", "working", "use", "used", "using",
+}
+
+# Cap on extracted terms, so a long question can't fan out into a huge query.
+_MAX_GRAPH_TERMS = 6
+
+# Cap on graph-search results, matching the Cypher `LIMIT 5`.
+_MAX_GRAPH_RESULTS = 5
+
 
 def sanitize_graph_term(term: str) -> str:
     """Sanitize a graph-search term via an allow-list and keyword rejection.
@@ -64,6 +83,28 @@ def sanitize_graph_term(term: str) -> str:
         if re.search(rf"\b{keyword}\b", cleaned, re.IGNORECASE):
             raise ValueError(f"forbidden graph-search term: {keyword}")
     return cleaned
+
+
+def extract_graph_terms(text: str) -> list[str]:
+    """Reduce a natural-language question to content terms for graph lookup.
+
+    Splits the input into words, drops stopwords and very short tokens, and
+    sanitizes each surviving term independently — a single term that trips
+    the Cypher-keyword check is skipped rather than voiding the whole search.
+    """
+    terms: list[str] = []
+    for word in text.split():
+        if word.lower() in _GRAPH_SEARCH_STOPWORDS:
+            continue
+        try:
+            safe = sanitize_graph_term(word).lower()
+        except ValueError:
+            continue
+        # Length is checked after sanitizing: "(n)" collapses to "n", and a
+        # one-character term would substring-match nearly every node.
+        if len(safe) >= 3 and safe not in terms:
+            terms.append(safe)
+    return terms[:_MAX_GRAPH_TERMS]
 
 
 class GraphStoreService(Protocol):
@@ -117,30 +158,29 @@ class NetworkXGraphStoreService:
         return graph
 
     def graph_search(self, term: str) -> list[Document]:
-        try:
-            safe = sanitize_graph_term(term)
-        except ValueError:
+        terms = extract_graph_terms(term)
+        if not terms:
             return []
-        if not safe:
-            return []
-        needle = safe.lower()
         results: list[Document] = []
         seen: set[str] = set()
         for node, data in self._graph.nodes(data=True):
             label = data.get("label", node)
             description = data.get("description", "")
             haystack = f"{node} {label} {description}".lower()
-            if needle in haystack:
-                content = description or str(node)
-                if content in seen:
-                    continue
-                seen.add(content)
-                results.append(
-                    Document(
-                        page_content=content,
-                        metadata={"source": "graph", "backend": self.backend, "node": node},
-                    )
+            if not any(t in haystack for t in terms):
+                continue
+            content = description or str(node)
+            if content in seen:
+                continue
+            seen.add(content)
+            results.append(
+                Document(
+                    page_content=content,
+                    metadata={"source": "graph", "backend": self.backend, "node": node},
                 )
+            )
+            if len(results) >= _MAX_GRAPH_RESULTS:
+                break
         return results
 
 
@@ -161,25 +201,24 @@ class Neo4jGraphStoreService:
         self._driver.close()
 
     def graph_search(self, term: str) -> list[Document]:
-        try:
-            safe = sanitize_graph_term(term)
-        except ValueError:
+        terms = extract_graph_terms(term)
+        if not terms:
             return []
-        if not safe:
-            return []
-        return self._cache.get_or_compute(safe.lower(), lambda: self._query(safe))
+        cache_key = ",".join(sorted(terms))
+        return self._cache.get_or_compute(cache_key, lambda: self._query(terms))
 
-    def _query(self, safe: str) -> list[Document]:
-        # Parameterized Cypher: user input is bound via `$term`, never
+    def _query(self, terms: list[str]) -> list[Document]:
+        # Parameterized Cypher: extracted terms are bound via `$terms`, never
         # interpolated into the query string.
         query = (
             "MATCH (n) "
-            "WHERE toLower(coalesce(n.label, '')) CONTAINS toLower($term) "
-            "OR toLower(coalesce(n.description, '')) CONTAINS toLower($term) "
-            "RETURN n.label AS label, n.description AS description LIMIT 5"
+            "WHERE any(term IN $terms WHERE "
+            "toLower(coalesce(n.label, '')) CONTAINS term "
+            "OR toLower(coalesce(n.description, '')) CONTAINS term) "
+            f"RETURN n.label AS label, n.description AS description LIMIT {_MAX_GRAPH_RESULTS}"
         )
         with self._driver.session() as session:
-            records = list(session.run(query, term=safe))
+            records = list(session.run(query, terms=terms))
         return [
             Document(
                 page_content=record.get("description") or record.get("label") or "",

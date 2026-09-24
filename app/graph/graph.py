@@ -16,10 +16,14 @@ The `retrieve` node performs hybrid retrieval: vector search (Pinecone/Chroma)
 combined with graph search (Neo4j/NetworkX).
 """
 
+import contextlib
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from langchain_core.documents import Document
+from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -60,7 +64,9 @@ def build_graph(
     workflow.add_node("guardrail", make_guardrail_node())
     workflow.add_node("error_output", make_error_output_node())
     workflow.add_node("retrieve", make_hybrid_retrieve_node(retriever, graph_search_fn))
-    workflow.add_node("grade_documents", make_grade_documents_node(grader_chain))
+    workflow.add_node(
+        "grade_documents", make_grade_documents_node(grader_chain, generation_chain)
+    )
     workflow.add_node("generate", make_generate_node(generation_chain))
     workflow.add_node("transform_query", make_transform_query_node(rewriter_chain))
     workflow.add_node("human_review", make_human_review_node())
@@ -110,7 +116,42 @@ def initial_state(question: str) -> dict[str, Any]:
         "human_decision": None,
         "blocked": False,
         "output_flagged": False,
+        "speculative_generation": "",
+        "speculative_context": "",
+        "speculative_question": "",
     }
+
+
+def warmup_backends(
+    retriever: Invokable,
+    graph_search_fn: Callable[[str], list[Document]],
+    llm: BaseChatModel,
+) -> None:
+    """Pre-open backend connections in a daemon thread at startup.
+
+    The first real query otherwise pays the full connection-setup cost: a
+    sleeping Neo4j Aura free-tier instance takes seconds to wake, and the
+    first OpenAI/Pinecone calls pay TLS handshake and pool setup. Firing
+    cheap calls in the background moves that latency off the request path.
+    Best-effort: failures are ignored since the request path retries anyway.
+    """
+
+    def _run() -> None:
+        calls = (
+            lambda: retriever.invoke("warmup"),
+            lambda: graph_search_fn("warmup"),
+            lambda: llm.invoke(
+                "ping",
+                config={"tags": ["warmup"], "metadata": {"purpose": "connection-warmup"}},
+            ),
+        )
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            futures = [pool.submit(call) for call in calls]
+            for future in futures:
+                with contextlib.suppress(Exception):  # warmup is best-effort
+                    future.result()
+
+    threading.Thread(target=_run, daemon=True, name="backend-warmup").start()
 
 
 def build_default_graph(
@@ -132,12 +173,16 @@ def build_default_graph(
     vector_store_service = build_vector_store_service(settings)
     graph_store_service = build_graph_store_service(settings)
 
+    retriever = vector_store_service.as_retriever(top_k=settings.retriever_top_k)
+    graph_search_fn = graph_store_service.graph_search
+    warmup_backends(retriever, graph_search_fn, llm)
+
     return build_graph(
-        retriever=vector_store_service.as_retriever(top_k=settings.retriever_top_k),
+        retriever=retriever,
         grader_chain=build_grader_chain(llm),
         generation_chain=build_generation_chain(llm),
         rewriter_chain=build_rewriter_chain(llm),
-        graph_search_fn=graph_store_service.graph_search,
+        graph_search_fn=graph_search_fn,
         checkpointer=checkpointer,
         max_retries=settings.max_retries,
     )

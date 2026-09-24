@@ -11,6 +11,7 @@ import os
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 os.environ["LANGSMITH_TRACING"] = "false"
 
+import re  # noqa: E402
 from typing import Any  # noqa: E402
 
 import pytest
@@ -75,14 +76,23 @@ class FakeSequentialRetriever:
 
 
 class FakeGrader:
-    """Grades documents based on a keyword contained in their content."""
+    """Grades documents based on a keyword contained in their content.
+
+    Mirrors the batched grader contract: it receives the numbered documents
+    serialized into `inputs["documents"]` and returns one verdict per
+    document, in order.
+    """
 
     def __init__(self, relevant_keyword: str = "LangGraph") -> None:
         self.relevant_keyword = relevant_keyword
 
-    def invoke(self, inputs: dict[str, Any]) -> dict[str, str]:
-        score = "yes" if self.relevant_keyword in inputs["document"] else "no"
-        return {"binary_score": score}
+    def invoke(self, inputs: dict[str, Any]) -> dict[str, list[str]]:
+        blocks = re.split(r"\[\d+\] ", inputs["documents"])[1:]
+        return {
+            "scores": [
+                "yes" if self.relevant_keyword in block else "no" for block in blocks
+            ]
+        }
 
 
 class FakeGenerationChain:

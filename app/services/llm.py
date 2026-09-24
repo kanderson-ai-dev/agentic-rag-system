@@ -20,12 +20,19 @@ from app.graph.prompts import (
     TRANSFORM_QUERY_PROMPT,
 )
 
+# Hard cap on generated answer length. The prompt already asks for at most
+# three sentences (~150 tokens); the bound only protects tail latency.
+GENERATION_MAX_TOKENS = 512
+
 
 class GradeDocuments(BaseModel):
-    """Structured output for the document relevance grader."""
+    """Structured output for the batched document relevance grader."""
 
-    binary_score: Literal["yes", "no"] = Field(
-        description="'yes' if the document is relevant to the question, otherwise 'no'."
+    scores: list[Literal["yes", "no"]] = Field(
+        description=(
+            "One 'yes'/'no' verdict per retrieved document, in the same order "
+            "the documents were provided."
+        )
     )
 
 
@@ -46,14 +53,15 @@ def build_chat_model(
 
 
 def build_grader_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
-    """Chain that grades a single document's relevance to a question."""
+    """Chain that grades all retrieved documents in a single LLM call."""
     structured_llm = llm.with_structured_output(GradeDocuments)
     return GRADE_DOCUMENTS_PROMPT | structured_llm
 
 
 def build_generation_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
     """Chain that generates the final answer from relevant context."""
-    return GENERATE_ANSWER_PROMPT | llm | StrOutputParser()
+    bounded_llm = llm.bind(max_tokens=GENERATION_MAX_TOKENS)
+    return GENERATE_ANSWER_PROMPT | bounded_llm | StrOutputParser()
 
 
 def build_rewriter_chain(llm: BaseChatModel) -> Runnable[Any, Any]:

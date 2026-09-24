@@ -6,16 +6,17 @@ GRADE_DOCUMENTS_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a grader assessing the relevance of a retrieved document "
+            "You are a grader assessing the relevance of retrieved documents "
             "to a user question.\n"
-            "Give a binary score 'yes' or 'no' to indicate whether the "
-            "document is relevant to the question. It does not need to be a "
-            "strict, exhaustive match - the goal is to filter out documents "
-            "that are clearly unrelated.",
+            "Score EACH numbered document 'yes' or 'no' - 'yes' if it is "
+            "relevant to the question. It does not need to be a strict, "
+            "exhaustive match - the goal is to filter out documents that are "
+            "clearly unrelated.\n"
+            "Return one score per document, in the same order they appear.",
         ),
         (
             "human",
-            "Retrieved document:\n\n{document}\n\nUser question: {question}",
+            "Retrieved documents:\n\n{documents}\n\nUser question: {question}",
         ),
     ]
 )

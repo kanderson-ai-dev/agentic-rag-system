@@ -1,5 +1,9 @@
 """Unit tests for individual Self-RAG node factories, using test doubles."""
 
+import threading
+
+from langchain_core.documents import Document
+
 import app.graph.nodes as nodes_module
 from app.graph.nodes import (
     make_generate_node,
@@ -26,6 +30,9 @@ def _state(**overrides):
         "web_search_needed": False,
         "retry_count": 0,
         "human_decision": None,
+        "speculative_generation": "",
+        "speculative_context": "",
+        "speculative_question": "",
     }
     base.update(overrides)
     return base
@@ -39,6 +46,38 @@ def test_retrieve_node_returns_retriever_documents() -> None:
 
     assert result["documents"] == [RELEVANT_DOC]
     assert retriever.calls == ["what is langgraph?"]
+
+
+def test_retrieve_node_dedupes_documents_across_backends() -> None:
+    duplicate = Document(
+        page_content=RELEVANT_DOC.page_content,
+        metadata={"source": "graph", "backend": "networkx"},
+    )
+    node = make_hybrid_retrieve_node(
+        FakeRetriever([RELEVANT_DOC]), graph_search_fn=lambda _q: [duplicate]
+    )
+
+    result = node(_state())
+
+    assert result["documents"] == [RELEVANT_DOC]
+
+
+def test_retrieve_node_returns_empty_on_backend_timeout(monkeypatch) -> None:
+    release = threading.Event()
+
+    class _SlowRetriever:
+        def invoke(self, question: str):
+            release.wait(timeout=10)
+            return [RELEVANT_DOC]
+
+    monkeypatch.setattr(nodes_module, "_BACKEND_TIMEOUT_SECONDS", 0.05)
+    node = make_hybrid_retrieve_node(_SlowRetriever(), graph_search_fn=lambda _q: [])
+    try:
+        result = node(_state())
+    finally:
+        release.set()
+
+    assert result["documents"] == []
 
 
 def test_grade_documents_node_filters_out_irrelevant_documents() -> None:
@@ -59,10 +98,50 @@ def test_grade_documents_node_flags_web_search_needed_when_nothing_relevant() ->
     assert result["web_search_needed"] is True
 
 
+def test_grade_documents_node_runs_speculative_generation_when_chain_given() -> None:
+    node = make_grade_documents_node(FakeGrader(), FakeGenerationChain())
+
+    result = node(_state(documents=[RELEVANT_DOC]))
+
+    assert result["speculative_generation"].startswith("Answer based on:")
+    assert result["speculative_context"] == RELEVANT_DOC.page_content
+    assert result["speculative_question"] == "what is langgraph?"
+
+
 def test_generate_node_uses_document_context() -> None:
     node = make_generate_node(FakeGenerationChain())
 
     result = node(_state(documents=[RELEVANT_DOC]))
+
+    assert result["generation"].startswith("Answer based on:")
+
+
+def test_generate_node_reuses_speculative_answer_when_inputs_match() -> None:
+    node = make_generate_node(FakeGenerationChain())
+
+    result = node(
+        _state(
+            documents=[RELEVANT_DOC],
+            speculative_generation="speculative answer",
+            speculative_context=RELEVANT_DOC.page_content,
+            speculative_question="what is langgraph?",
+        )
+    )
+
+    assert result["generation"] == "speculative answer"
+
+
+def test_generate_node_regenerates_when_context_changed_after_grading() -> None:
+    node = make_generate_node(FakeGenerationChain())
+
+    result = node(
+        _state(
+            documents=[IRRELEVANT_DOC],
+            speculative_generation="speculative answer",
+            speculative_context=RELEVANT_DOC.page_content,
+            speculative_question="what is langgraph?",
+        )
+    )
 
     assert result["generation"].startswith("Answer based on:")
 
