@@ -952,10 +952,11 @@ button.th-sort:hover {
   stroke: var(--success);
 }
 
-.chart .axis-label {
-  fill: var(--text-subtle);
-  font-size: 9px;
-  font-family: var(--font-sans);
+.chart-range {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+  margin-bottom: var(--space-2);
 }
 
 .chart-legend {

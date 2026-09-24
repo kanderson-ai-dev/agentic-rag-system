@@ -216,23 +216,18 @@ function renderChart(recent) {
   points(latencies, maxLatency, "point-latency");
   points(costs, maxCost, "point-cost");
 
-  // Axis labels: first/last timestamps and the peak value of each series.
-  const axisLabel = (text, cx, cy) => {
-    const t = document.createElementNS(NS, "text");
-    t.setAttribute("class", "axis-label");
-    t.setAttribute("x", cx.toFixed(2));
-    t.setAttribute("y", cy.toFixed(2));
-    t.textContent = text;
-    svg.appendChild(t);
-  };
-  const firstLabel = new Date(ordered[0].timestamp).toLocaleTimeString();
-  const lastLabel = new Date(ordered[n - 1].timestamp).toLocaleTimeString();
-  axisLabel(firstLabel, pad, H - 1);
-  axisLabel(lastLabel, W - pad, H - 1);
-
   chart.appendChild(svg);
 
-  // Legend with the latest actual value per series.
+  // Time range + legend with the latest actual value per series. These are
+  // HTML in the figcaption, not SVG <text>: the chart uses
+  // preserveAspectRatio="none", which would non-uniformly stretch any text.
+  const firstLabel = new Date(ordered[0].timestamp).toLocaleTimeString();
+  const lastLabel = new Date(ordered[n - 1].timestamp).toLocaleTimeString();
+  const range = document.createElement("span");
+  range.className = "chart-range";
+  range.textContent = `${firstLabel} – ${lastLabel}`;
+  caption.appendChild(range);
+
   const legend = document.createElement("div");
   legend.className = "chart-legend";
   const legendItems = [
