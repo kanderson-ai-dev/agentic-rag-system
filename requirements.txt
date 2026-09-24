@@ -326,7 +326,7 @@ requests-oauthlib==2.0.0
     # via kubernetes
 requests-toolbelt==1.0.0
     # via langsmith
-rich==14.3.4
+rich==15.0.0
     # via
     #   chromadb
     #   typer
