@@ -98,13 +98,20 @@ per run (`faithfulness`, `answer_relevancy`, `context_precision`,
 correctness/usefulness/safety), so every score is inspectable run-by-run, not
 just an aggregate.
 
-<!-- Screenshot — hidden until captured. This one requires an interactive
-     LangSmith session, so it is taken by hand: open the experiment produced by
-     `python evaluation/run_evaluation.py`, screenshot the comparison view with
-     the five evaluators visible, save it as
-     docs/screenshots/langsmith-experiment.png, then uncomment:
-> ![LangSmith experiment](docs/screenshots/langsmith-experiment.png)
--->
+Experiment `agentic-rag-system-a4e7c5db`, 10/10 runs with all five evaluators
+visible per row (the out-of-domain question scores 0.00 by design — the system
+correctly refuses to answer outside its knowledge base, and the evaluators
+catch it):
+
+![LangSmith experiment — run table with the five evaluators](docs/screenshots/langsmith-experiment-1.png)
+
+Each score is drillable down to the judge's reasoning:
+
+![LangSmith — llm_as_judge score with evaluator reasoning](docs/screenshots/langsmith-experiment-2.png)
+
+And every evaluator runs as a real trace (`gpt-4o-mini`, token usage visible):
+
+![LangSmith — evaluator trace detail](docs/screenshots/langsmith-experiment-3.png)
 
 Trend history is tracked in `evaluation/results/TREND.md` (regenerated with
 `python evaluation/run_ragas.py --report`).
@@ -406,8 +413,6 @@ the Tailwind CDN origin only), and CI that uses `pull_request` (never
   package is currently incompatible with LangChain 1.x).
 - Neo4j Aura free tier "sleeps" after inactivity, so the first query after idle
   can exceed the documented p95 latency.
-- The `langsmith-experiment.png` capture is intentionally pending — it requires
-  an interactive LangSmith session (see `docs/screenshots/README.md`).
 - Single-user authentication (no multi-tenant admin).
 - SQLite checkpoints/usage are not migrated to Postgres.
 - Rate limiting is applied to `/auth/login` only (general API rate limiting is

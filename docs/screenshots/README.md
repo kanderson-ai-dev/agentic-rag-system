@@ -11,7 +11,9 @@ Chromium (Playwright) — so the images always reflect the real UI, not mocks.
 | `dashboard-latency.png` | The console's cost/latency SVG chart + recent-requests table, populated by real queries | `capture_screenshots.py` |
 | `ragas-scorecard.png` | The versioned `evaluation/results/ragas_scorecard.json` rendered as a terminal-style capture | `capture_screenshots.py` |
 | `demo.gif` | Short clip of the landing answering a question | `capture_screenshots.py` (needs `imageio-ffmpeg` or an `ffmpeg` binary) |
-| `langsmith-experiment.png` | The LangSmith experiment run list after `python evaluation/run_evaluation.py` | **Manual** — requires an interactive LangSmith session; capture it from the dashboard at <https://smith.langchain.com> |
+| `langsmith-experiment-1.png` | The LangSmith experiment run list with the five evaluators per row | **Manual** — see below |
+| `langsmith-experiment-2.png` | The `llm_as_judge` score with the evaluator's reasoning | **Manual** — see below |
+| `langsmith-experiment-3.png` | A single evaluator trace (`gpt-4o-mini`, token usage, metadata) | **Manual** — see below |
 
 ## Regenerating the automated captures
 
@@ -33,10 +35,16 @@ the composer busy-state to settle, retries once on a transient backend error
 
 ## Manual capture: LangSmith experiment
 
+The LangSmith captures require an interactive session at
+<https://smith.langchain.com>, so they are taken by hand:
+
 1. Run `python evaluation/run_evaluation.py` (needs `LANGCHAIN_API_KEY` +
    `LANGCHAIN_TRACING_V2=true` in `.env`).
-2. Open the printed experiment URL in LangSmith and screenshot the run list /
-   comparison view with the five evaluators visible (`faithfulness`,
-   `answer_relevancy`, `context_precision`, `context_recall`, `llm_as_judge`).
-3. Save as `langsmith-experiment.png` here and uncomment the image block in
-   `README.md`.
+2. Open the printed experiment URL and screenshot the run list / comparison
+   view with the five evaluators visible (`faithfulness`, `answer_relevancy`,
+   `context_precision`, `context_recall`, `llm_as_judge`) →
+   `langsmith-experiment-1.png`.
+3. Open a score's popover to show the judge's reasoning →
+   `langsmith-experiment-2.png`.
+4. Open an evaluator trace showing the chain and token usage →
+   `langsmith-experiment-3.png`.
