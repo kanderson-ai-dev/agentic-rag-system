@@ -8,6 +8,7 @@ import contextlib
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 
 class UsageStore:
@@ -76,7 +77,7 @@ class UsageStore:
         )
         self._conn.commit()
 
-    def summary(self, session_id: str | None = None) -> dict:
+    def summary(self, session_id: str | None = None) -> dict[str, Any]:
         """Aggregate usage metrics.
 
         With no `session_id`, aggregates across all recorded requests (useful
@@ -111,9 +112,11 @@ class UsageStore:
             "escalated_requests": row[6],
         }
 
-    def recent(self, limit: int = 20, session_id: str | None = None) -> list[dict]:
+    def recent(
+        self, limit: int = 20, session_id: str | None = None
+    ) -> list[dict[str, Any]]:
         where = "WHERE session_id = ?" if session_id is not None else ""
-        params: tuple = (session_id, limit) if session_id is not None else (limit,)
+        params: tuple[Any, ...] = (session_id, limit) if session_id is not None else (limit,)
         rows = self._conn.execute(
             f"""
             SELECT timestamp, thread_id, prompt_tokens, completion_tokens,

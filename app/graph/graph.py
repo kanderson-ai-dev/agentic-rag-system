@@ -25,6 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from app.core.config import Settings
+from app.core.cost_tracking import TokenUsageCallbackHandler
 from app.graph.edges import (
     make_decide_to_generate,
     route_after_guardrail,
@@ -50,9 +51,9 @@ def build_graph(
     generation_chain: Invokable,
     rewriter_chain: Invokable,
     graph_search_fn: Callable[[str], list[Document]],
-    checkpointer: BaseCheckpointSaver,
+    checkpointer: BaseCheckpointSaver[Any],
     max_retries: int = 2,
-) -> CompiledStateGraph:
+) -> CompiledStateGraph[Any, None, Any, Any]:
     """Wire the Self-RAG nodes and edges into a compiled, runnable graph."""
     workflow = StateGraph(GraphState)
 
@@ -113,8 +114,10 @@ def initial_state(question: str) -> dict[str, Any]:
 
 
 def build_default_graph(
-    settings: Settings, checkpointer: BaseCheckpointSaver, token_handler=None
-) -> CompiledStateGraph:
+    settings: Settings,
+    checkpointer: BaseCheckpointSaver[Any],
+    token_handler: TokenUsageCallbackHandler | None = None,
+) -> CompiledStateGraph[Any, None, Any, Any]:
     """Build the production graph, wired with real LLM and hybrid retrieval."""
     from app.services.graph_store import build_graph_store_service
     from app.services.llm import (

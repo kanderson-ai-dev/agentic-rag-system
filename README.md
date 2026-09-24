@@ -132,7 +132,7 @@ retrieval, or the model change.
 | CI reliability | GitHub Actions build | green | `.github/workflows/ci.yml` |
 | Supply-chain security | `gitleaks` / `pip-audit` / CodeQL findings | 0 | CI |
 | Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 96%** | CI |
-| Static typing | `mypy` on `app/` | 0 errors | CI |
+| Static typing | `mypy --strict` on `app/` | 0 errors | CI |
 
 ---
 
@@ -348,7 +348,7 @@ The image runs as a non-root user and injects secrets at runtime via `.env`.
 uv run pytest -v                      # core suite (no credentials required)
 uv run pytest --cov=app               # coverage report — 96% on app/ measured
 uv run ruff check .                   # lint
-uv run mypy app/                      # type check
+uv run mypy --strict app/             # strict type check (0 errors)
 ```
 
 Optional-credential tests (Pinecone, Neo4j, evaluation) skip automatically when
@@ -406,8 +406,6 @@ the Tailwind CDN origin only), and CI that uses `pull_request` (never
   package is currently incompatible with LangChain 1.x).
 - Neo4j Aura free tier "sleeps" after inactivity, so the first query after idle
   can exceed the documented p95 latency.
-- `mypy --strict` still reports pre-existing errors in `app/` (the configured
-  `mypy app/` passes with 0); strict-mode cleanup is tracked as a next step.
 - The `langsmith-experiment.png` capture is intentionally pending — it requires
   an interactive LangSmith session (see `docs/screenshots/README.md`).
 - Single-user authentication (no multi-tenant admin).

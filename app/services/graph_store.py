@@ -10,7 +10,7 @@ external account.
 import json
 import re
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from langchain_core.documents import Document
 
@@ -84,7 +84,7 @@ class NetworkXGraphStoreService:
 
         self._graph = self._load(nx, Path(graph_path))
 
-    def _load(self, nx, path: Path):
+    def _load(self, nx: Any, path: Path) -> Any:
         if path.exists():
             try:
                 return nx.node_link_graph(json.loads(path.read_text(encoding="utf-8")))
@@ -92,7 +92,7 @@ class NetworkXGraphStoreService:
                 pass  # fall through to the default graph on a corrupt file
         return self._default_graph(nx)
 
-    def _default_graph(self, nx):
+    def _default_graph(self, nx: Any) -> Any:
         """Build a small graph from the demo corpus so the fallback works
         out of the box without running the ingest script."""
         from app.services.knowledge_base import SAMPLE_DOCUMENTS

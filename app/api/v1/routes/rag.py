@@ -2,6 +2,7 @@
 
 import time
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from langgraph.graph.state import CompiledStateGraph
@@ -24,8 +25,8 @@ router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 def query(
     payload: QueryRequest,
     request: Request,
-    graph: CompiledStateGraph = Depends(get_graph),
-    _: dict | None = Depends(verify_jwt),
+    graph: CompiledStateGraph[Any, None, Any, Any] = Depends(get_graph),
+    _: dict[str, Any] | None = Depends(verify_jwt),
     session_id: str | None = Depends(get_session_id),
 ) -> QueryResponse:
     """Invoke the compiled Self-RAG graph for a question.

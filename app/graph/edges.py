@@ -5,6 +5,8 @@ guardrail, correction-loop and human-in-the-loop logic trivial to unit test
 without any LLM calls or graph execution.
 """
 
+from collections.abc import Callable
+
 from app.graph.state import GraphState
 
 
@@ -17,7 +19,7 @@ def route_after_guardrail(state: GraphState) -> str:
     return "error_output" if state["blocked"] else "retrieve"
 
 
-def make_decide_to_generate(max_retries: int):
+def make_decide_to_generate(max_retries: int) -> Callable[[GraphState], str]:
     """Route after grading: generate, retry, or escalate to a human.
 
     - Enough relevant documents -> generate the answer.

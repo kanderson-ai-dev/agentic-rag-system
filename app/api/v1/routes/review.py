@@ -4,6 +4,8 @@ Resumes a graph execution that was paused by `human_review_node` when the
 Self-RAG correction loop exhausted its retries.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
@@ -18,8 +20,8 @@ router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 def review(
     thread_id: str,
     payload: HumanReviewRequest,
-    graph: CompiledStateGraph = Depends(get_graph),
-    _: dict | None = Depends(verify_jwt),
+    graph: CompiledStateGraph[Any, None, Any, Any] = Depends(get_graph),
+    _: dict[str, Any] | None = Depends(verify_jwt),
 ) -> QueryResponse:
     """Resume an interrupted graph run with a human's decision."""
     config = {"configurable": {"thread_id": thread_id}}

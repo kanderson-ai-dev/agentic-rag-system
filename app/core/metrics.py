@@ -3,9 +3,12 @@
 import functools
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import ParamSpec, TypeVar
 
 from prometheus_client import Counter, Histogram
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 agent_node_latency_seconds = Histogram(
     "agent_node_latency_seconds",
@@ -26,15 +29,15 @@ agent_human_review_total = Counter(
 )
 
 
-def timed_node(node_name: str) -> Callable:
+def timed_node(node_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorate a graph node to record its latency in the histogram."""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
-        def wrapper(state: dict[str, Any]) -> dict[str, Any]:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             start = time.perf_counter()
             try:
-                return func(state)
+                return func(*args, **kwargs)
             finally:
                 agent_node_latency_seconds.labels(node=node_name).observe(
                     time.perf_counter() - start

@@ -3,7 +3,7 @@
 import uuid
 
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -11,7 +11,9 @@ from starlette.responses import Response
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Generate or propagate an `X-Request-ID` and bind it to structured logs."""
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         structlog.contextvars.bind_contextvars(request_id=request_id)
         try:
@@ -39,7 +41,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     additionally allows ``data:`` so the inline SVG favicon loads.
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "

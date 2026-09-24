@@ -60,7 +60,7 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Type check
-        run: mypy app/
+        run: mypy --strict app/
       - name: Test with coverage
         run: pytest -v --cov=app --cov-report=term-missing --cov-fail-under=80
       - name: Dependency audit

@@ -6,6 +6,8 @@ once during the application lifespan and exposed here as a thin dependency
 that reads them back from `app.state`.
 """
 
+from typing import Any
+
 import jwt
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -28,14 +30,16 @@ def get_session_id(x_session_id: str | None = Header(default=None)) -> str | Non
     return x_session_id
 
 
-def get_graph(request: Request) -> CompiledStateGraph:
+def get_graph(request: Request) -> CompiledStateGraph[Any, None, Any, Any]:
     """Return the compiled Self-RAG graph stored on the application state.
 
     Raises a 503 if the graph could not be initialized (e.g. missing
     `OPENAI_API_KEY`), instead of letting requests fail with an
     unhandled `AttributeError`.
     """
-    graph = getattr(request.app.state, "graph", None)
+    graph: CompiledStateGraph[Any, None, Any, Any] | None = getattr(
+        request.app.state, "graph", None
+    )
     if graph is None:
         error = getattr(request.app.state, "graph_error", "graph not initialized")
         raise HTTPException(status_code=503, detail=f"Service not ready: {error}")
@@ -45,7 +49,7 @@ def get_graph(request: Request) -> CompiledStateGraph:
 def verify_jwt(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     settings: Settings = Depends(get_settings),
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Require a valid Bearer JWT when authentication is configured.
 
     When `JWT_SECRET_KEY` is not configured the service remains open for local

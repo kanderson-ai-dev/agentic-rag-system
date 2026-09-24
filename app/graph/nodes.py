@@ -6,8 +6,9 @@ only need to expose an `.invoke()` method, so unit tests can pass in simple
 stub objects instead of real LangChain runnables or network calls.
 """
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from langchain_core.documents import Document
 from langgraph.types import interrupt
@@ -21,6 +22,10 @@ class Invokable(Protocol):
     def invoke(self, input: Any) -> Any: ...  # noqa: A002
 
 
+NodeFn = Callable[[GraphState], dict[str, Any]]
+"""Signature shared by every compiled graph node produced here."""
+
+
 def _binary_score(grading_result: Any) -> str:
     """Extract the 'yes'/'no' score from a grader chain result.
 
@@ -28,11 +33,13 @@ def _binary_score(grading_result: Any) -> str:
     real structured-output chain) or a plain dict (convenient for tests).
     """
     if hasattr(grading_result, "binary_score"):
-        return grading_result.binary_score
-    return grading_result["binary_score"]
+        return cast(str, grading_result.binary_score)
+    return cast(str, grading_result["binary_score"])
 
 
-def make_hybrid_retrieve_node(retriever: Invokable, graph_search_fn):
+def make_hybrid_retrieve_node(
+    retriever: Invokable, graph_search_fn: Callable[[str], list[Document]]
+) -> NodeFn:
     """Retrieve documents from both the vector store and the graph store.
 
     ``graph_search_fn`` is a callable `(term: str) -> list[Document]` provided
@@ -47,7 +54,7 @@ def make_hybrid_retrieve_node(retriever: Invokable, graph_search_fn):
     """
 
     @timed_node("retrieve")
-    def retrieve_node(state: GraphState) -> dict:
+    def retrieve_node(state: GraphState) -> dict[str, Any]:
         question = state["question"]
         with ThreadPoolExecutor(max_workers=2) as executor:
             vector_future = executor.submit(retriever.invoke, question)
@@ -59,7 +66,7 @@ def make_hybrid_retrieve_node(retriever: Invokable, graph_search_fn):
     return retrieve_node
 
 
-def make_grade_documents_node(grader_chain: Invokable):
+def make_grade_documents_node(grader_chain: Invokable) -> NodeFn:
     """Filter out documents that are not relevant to the question.
 
     Each document is graded with its own LLM call; grading them concurrently
@@ -69,7 +76,7 @@ def make_grade_documents_node(grader_chain: Invokable):
     """
 
     @timed_node("grade_documents")
-    def grade_documents_node(state: GraphState) -> dict:
+    def grade_documents_node(state: GraphState) -> dict[str, Any]:
         documents = state["documents"]
         question = state["question"]
         if not documents:
@@ -93,11 +100,11 @@ def make_grade_documents_node(grader_chain: Invokable):
     return grade_documents_node
 
 
-def make_generate_node(generation_chain: Invokable):
+def make_generate_node(generation_chain: Invokable) -> NodeFn:
     """Generate the final answer from the currently relevant documents."""
 
     @timed_node("generate")
-    def generate_node(state: GraphState) -> dict:
+    def generate_node(state: GraphState) -> dict[str, Any]:
         context = "\n\n".join(document.page_content for document in state["documents"])
         answer = generation_chain.invoke({"context": context, "question": state["question"]})
         return {"generation": answer}
@@ -105,11 +112,11 @@ def make_generate_node(generation_chain: Invokable):
     return generate_node
 
 
-def make_transform_query_node(rewriter_chain: Invokable):
+def make_transform_query_node(rewriter_chain: Invokable) -> NodeFn:
     """Rewrite the question to improve retrieval and count the attempt."""
 
     @timed_node("transform_query")
-    def transform_query_node(state: GraphState) -> dict:
+    def transform_query_node(state: GraphState) -> dict[str, Any]:
         rewritten_question = rewriter_chain.invoke({"question": state["question"]})
         return {
             "question": rewritten_question,
@@ -119,7 +126,7 @@ def make_transform_query_node(rewriter_chain: Invokable):
     return transform_query_node
 
 
-def make_human_review_node():
+def make_human_review_node() -> NodeFn:
     """Escalate to a human reviewer when the correction loop is exhausted.
 
     Pauses graph execution via `interrupt()` and surfaces the current
@@ -135,7 +142,7 @@ def make_human_review_node():
     """
 
     @timed_node("human_review")
-    def human_review_node(state: GraphState) -> dict:
+    def human_review_node(state: GraphState) -> dict[str, Any]:
         decision_payload = interrupt(
             {
                 "reason": "max_retries_exhausted",
@@ -146,7 +153,7 @@ def make_human_review_node():
         )
 
         decision = decision_payload.get("decision", "approve")
-        updates: dict = {"human_decision": decision}
+        updates: dict[str, Any] = {"human_decision": decision}
 
         if decision == "override":
             updates["generation"] = decision_payload.get("override_answer", "")
@@ -160,7 +167,7 @@ def make_human_review_node():
     return human_review_node
 
 
-def make_guardrail_node():
+def make_guardrail_node() -> NodeFn:
     """Sanitize the input question and block it if a prompt injection is detected.
 
     This runs first in the graph so malicious input never reaches the retriever
@@ -168,7 +175,7 @@ def make_guardrail_node():
     """
 
     @timed_node("guardrail")
-    def guardrail_node(state: GraphState) -> dict:
+    def guardrail_node(state: GraphState) -> dict[str, Any]:
         question = sanitize_input(state["question"])
         blocked = not question or detect_prompt_injection(question) is not None
         return {"question": question, "blocked": blocked}
@@ -176,22 +183,22 @@ def make_guardrail_node():
     return guardrail_node
 
 
-def make_output_guardrail_node():
+def make_output_guardrail_node() -> NodeFn:
     """Screen the final generation for system-prompt leakage or reflected injection."""
 
     @timed_node("output_guardrail")
-    def output_guardrail_node(state: GraphState) -> dict:
+    def output_guardrail_node(state: GraphState) -> dict[str, Any]:
         flagged = screen_output(state["generation"]) is not None
         return {"output_flagged": flagged}
 
     return output_guardrail_node
 
 
-def make_error_output_node():
+def make_error_output_node() -> NodeFn:
     """Produce a generic refusal without touching retrieval or the LLM."""
 
     @timed_node("error_output")
-    def error_output_node(state: GraphState) -> dict:
+    def error_output_node(state: GraphState) -> dict[str, Any]:
         return {"generation": "I'm sorry, but I can't help with that request."}
 
     return error_output_node

@@ -1,6 +1,7 @@
 """JWT and password helpers for single-user authentication."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import bcrypt
 import jwt
@@ -23,7 +24,7 @@ def create_access_token(settings: Settings, username: str) -> str:
     )
 
 
-def decode_access_token(settings: Settings, token: str) -> dict:
+def decode_access_token(settings: Settings, token: str) -> dict[str, Any]:
     """Decode and validate a JWT, raising `jwt.PyJWTError` on failure."""
     return jwt.decode(
         token,

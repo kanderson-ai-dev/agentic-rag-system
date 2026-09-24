@@ -74,12 +74,14 @@ class PineconeVectorStoreService:
         self._store = PineconeVectorStore(index=index, embedding=embeddings)
         self._cache: TTLCache[list[Document]] = TTLCache(ttl_seconds=_RETRIEVER_CACHE_TTL_SECONDS)
 
-    def as_retriever(self, top_k: int = 4):
+    def as_retriever(self, top_k: int = 4) -> _CachingRetriever:
         base = self._store.as_retriever(search_kwargs={"k": top_k})
         return _CachingRetriever(base, self._cache)
 
 
-def build_vector_store_service(settings: Settings):
+def build_vector_store_service(
+    settings: Settings,
+) -> ChromaVectorStoreService | PineconeVectorStoreService:
     """Create the vector store service, choosing the backend by configuration.
 
     Uses Pinecone when `PINECONE_API_KEY` is configured, otherwise falls back to

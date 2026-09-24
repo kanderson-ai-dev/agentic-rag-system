@@ -6,7 +6,7 @@ looks like a credential before the record is written.
 """
 
 import sys
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -56,4 +56,4 @@ def configure_logging(level: str = "INFO", environment: str = "development") -> 
 
 def get_logger(name: str = __name__) -> structlog.stdlib.BoundLogger:
     """Return a module-level structlog logger."""
-    return structlog.get_logger(name)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))

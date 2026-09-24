@@ -5,8 +5,10 @@ keeps the graph nodes trivially testable with hand-written stub objects
 instead of real language models.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
@@ -27,11 +29,13 @@ class GradeDocuments(BaseModel):
     )
 
 
-def build_chat_model(settings: Settings, callback_handler=None):
+def build_chat_model(
+    settings: Settings, callback_handler: BaseCallbackHandler | None = None
+) -> BaseChatModel:
     """Build the ChatOpenAI model used across all chains."""
     from langchain_openai import ChatOpenAI
 
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "model": settings.chat_model_name,
         "temperature": settings.chat_model_temperature,
         "api_key": settings.openai_api_key_value(),
@@ -41,17 +45,17 @@ def build_chat_model(settings: Settings, callback_handler=None):
     return ChatOpenAI(**kwargs)
 
 
-def build_grader_chain(llm) -> Runnable:
+def build_grader_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
     """Chain that grades a single document's relevance to a question."""
     structured_llm = llm.with_structured_output(GradeDocuments)
     return GRADE_DOCUMENTS_PROMPT | structured_llm
 
 
-def build_generation_chain(llm) -> Runnable:
+def build_generation_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
     """Chain that generates the final answer from relevant context."""
     return GENERATE_ANSWER_PROMPT | llm | StrOutputParser()
 
 
-def build_rewriter_chain(llm) -> Runnable:
+def build_rewriter_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
     """Chain that rewrites the question to improve retrieval."""
     return TRANSFORM_QUERY_PROMPT | llm | StrOutputParser()
