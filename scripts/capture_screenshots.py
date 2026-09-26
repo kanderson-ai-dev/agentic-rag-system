@@ -78,6 +78,24 @@ def save_screenshot(locator_or_page, path: Path, **kwargs) -> None:
     raise last_error
 
 
+def warm_service(browser) -> None:
+    """Run one unrecorded query so the demo doesn't show cold-start latency.
+
+    Backends like Neo4j keep idle connection pools; the first real query
+    after a rest pays a multi-second reconnect that would dominate the
+    recorded clip. A throwaway ask cycle warms the pool before recording.
+    """
+    context = browser.new_context(viewport={"width": 1280, "height": 900})
+    page = context.new_page()
+    try:
+        page.goto(BASE_URL + "/", wait_until="networkidle")
+        page.fill("#question", LANDING_QUESTION)
+        page.click("#ask-button")
+        wait_for_ask_cycle(page, "#ask-button")
+    finally:
+        context.close()
+
+
 def capture_landing(browser) -> float:
     """Screenshot the landing answering a real question; record a demo clip.
 
@@ -102,9 +120,9 @@ def capture_landing(browser) -> float:
             # The recording doubles as rag-demo.gif: hold on the empty landing,
             # then type the question character by character so the viewer can
             # read what is being sent — `fill` would pop it in instantly.
-            page.wait_for_timeout(900)
-            page.locator("#question").press_sequentially(LANDING_QUESTION, delay=55)
-            page.wait_for_timeout(350)
+            page.wait_for_timeout(700)
+            page.locator("#question").press_sequentially(LANDING_QUESTION, delay=45)
+            page.wait_for_timeout(300)
             page.click("#ask-button")
             wait_for_ask_cycle(page, "#ask-button")
             # A transient backend error renders a Retry button — use it once.
@@ -114,7 +132,7 @@ def capture_landing(browser) -> float:
                 wait_for_ask_cycle(page, "#ask-button")
             page.wait_for_timeout(400)  # let source chips / fonts settle
             save_screenshot(page.locator("main"), SHOTS_DIR / "frontend.png")
-            page.wait_for_timeout(2000)  # let the clip linger on the answer
+            page.wait_for_timeout(1500)  # let the clip linger on the answer
         finally:
             context.close()
         video_path = page.video.path() if page.video else None
@@ -257,6 +275,7 @@ def main() -> int:
     SHOTS_DIR.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
+        warm_service(browser)
         trim_seconds = capture_landing(browser)
         capture_console(browser)
         capture_scorecard(browser)
