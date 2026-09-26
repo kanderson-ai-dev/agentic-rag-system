@@ -46,6 +46,7 @@ CONSOLE_QUESTIONS = [
     "How does the Self-RAG correction loop work?",
 ]
 QUERY_TIMEOUT_MS = 120_000
+WAIT_SPEEDUP = 4.0
 
 
 def wait_for_ask_cycle(page, button_sel: str) -> None:
@@ -96,11 +97,13 @@ def warm_service(browser) -> None:
         context.close()
 
 
-def capture_landing(browser) -> float:
+def capture_landing(browser) -> dict:
     """Screenshot the landing answering a real question; record a demo clip.
 
-    Returns the seconds of leading dead time in the recording (page-load
-    white flash before content paints) so the GIF conversion can trim it.
+    Returns timestamps (seconds since the recording started) that drive the
+    GIF conversion: ``trim`` is the leading dead time (page-load white flash)
+    to cut, and ``wait_start``/``wait_end`` bracket the backend wait that is
+    sped up so the demo doesn't linger on the loading skeleton.
     """
     with tempfile.TemporaryDirectory() as video_dir:
         context = browser.new_context(
@@ -124,12 +127,14 @@ def capture_landing(browser) -> float:
             page.locator("#question").press_sequentially(LANDING_QUESTION, delay=45)
             page.wait_for_timeout(300)
             page.click("#ask-button")
+            clicked_at = time.monotonic()
             wait_for_ask_cycle(page, "#ask-button")
             # A transient backend error renders a Retry button — use it once.
             retry = page.locator("#answer [role='alert'] button")
             if retry.count():
                 retry.first.click()
                 wait_for_ask_cycle(page, "#ask-button")
+            answered_at = time.monotonic()
             page.wait_for_timeout(400)  # let source chips / fonts settle
             save_screenshot(page.locator("main"), SHOTS_DIR / "frontend.png")
             page.wait_for_timeout(1500)  # let the clip linger on the answer
@@ -138,7 +143,11 @@ def capture_landing(browser) -> float:
         video_path = page.video.path() if page.video else None
         if video_path and Path(video_path).exists():
             shutil.copy(video_path, SHOTS_DIR / "demo.webm")
-        return loaded_at - recording_start
+        return {
+            "trim": loaded_at - recording_start,
+            "wait_start": clicked_at - recording_start,
+            "wait_end": answered_at - recording_start,
+        }
 
 
 def ask_console(page, question: str) -> None:
@@ -208,12 +217,14 @@ def capture_scorecard(browser) -> None:
         context.close()
 
 
-def maybe_make_gif(trim_seconds: float = 0.0) -> None:
+def maybe_make_gif(timings: dict) -> None:
     """Convert demo.webm → rag-demo.gif if an ffmpeg binary is available.
 
-    ``trim_seconds`` cuts the leading dead time (white flash while the page
-    loads) from the recording, keeping a short beat of idle landing before
-    the typing starts.
+    ``timings["trim"]`` cuts the leading dead time (white flash while the
+    page loads). ``timings["wait_start"]``/``"wait_end"`` bracket the backend
+    wait (Ask click → answer rendered): that segment is time-compressed so
+    the demo plays at normal speed while typing and reading, but doesn't
+    linger on the loading skeleton.
     """
     webm = SHOTS_DIR / "demo.webm"
     gif = SHOTS_DIR / "rag-demo.gif"
@@ -228,8 +239,7 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
     if not ffmpeg:
         print("ffmpeg not found — keeping demo.webm only (GIF skipped).")
         return
-    # Output-side -ss seeks accurately (input seek snaps to sparse keyframes).
-    trim = max(0.0, trim_seconds - 0.4)
+    trim = max(0.0, timings["trim"] - 0.4)
     # The recording's last frame captures the browser context tearing down
     # (a faded/half-rendered window) — drop the tail of the clip.
     probe = subprocess.run(
@@ -241,25 +251,45 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
         if match
         else 0.0
     )
-    keep = max(0.0, duration - trim - 0.6)
+    end = max(trim, duration - 0.6)
+    # Small offsets keep the button press and the answer's first render at
+    # normal speed so the speedup doesn't look like a jump cut.
+    wait_start = min(max(timings["wait_start"] + 0.15, trim), end)
+    wait_end = min(max(timings["wait_end"] - 0.1, wait_start), end)
     # A single global palette via palettegen/paletteuse avoids the native GIF
     # encoder's per-frame local palette + region-offsetting path, which can
     # "ghost" a stale rectangle of solid color when its changed-region diff
     # is wrong (seen as a half-white/olive block over part of the frame).
+    palette_tail = (
+        "fps=10,scale=880:-1:flags=lanczos,split[g0][g1];"
+        "[g0]palettegen=stats_mode=diff[p];"
+        "[g1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle[out]"
+    )
+    if wait_end - wait_start >= 0.4:
+        filters = (
+            "split=3[s0][s1][s2];"
+            f"[s0]trim=start={trim:.2f}:end={wait_start:.2f},setpts=PTS-STARTPTS[a];"
+            f"[s1]trim=start={wait_start:.2f}:end={wait_end:.2f},"
+            f"setpts=(PTS-STARTPTS)/{WAIT_SPEEDUP}[b];"
+            f"[s2]trim=start={wait_end:.2f}:end={end:.2f},setpts=PTS-STARTPTS[c];"
+            "[a][b][c]concat=n=3:v=1[v];"
+            f"[v]{palette_tail}"
+        )
+    else:
+        filters = (
+            f"trim=start={trim:.2f}:end={end:.2f},setpts=PTS-STARTPTS[v];"
+            f"[v]{palette_tail}"
+        )
     subprocess.run(
         [
             ffmpeg,
             "-y",
             "-i",
             str(webm),
-            "-ss",
-            f"{trim:.2f}",
-            "-t",
-            f"{keep:.2f}",
-            "-vf",
-            "fps=10,scale=880:-1:flags=lanczos,split[s0][s1],"
-            "[s0]palettegen=stats_mode=diff[p],"
-            "[s1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle",
+            "-filter_complex",
+            filters,
+            "-map",
+            "[out]",
             "-loop",
             "0",
             str(gif),
@@ -276,11 +306,11 @@ def main() -> int:
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         warm_service(browser)
-        trim_seconds = capture_landing(browser)
+        timings = capture_landing(browser)
         capture_console(browser)
         capture_scorecard(browser)
         browser.close()
-    maybe_make_gif(trim_seconds)
+    maybe_make_gif(timings)
     for path in sorted(SHOTS_DIR.iterdir()):
         if path.suffix in {".png", ".gif"}:
             print(f"  {path.relative_to(ROOT)} ({path.stat().st_size // 1024} KB)")
