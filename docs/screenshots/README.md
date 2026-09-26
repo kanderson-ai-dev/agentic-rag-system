@@ -10,7 +10,7 @@ Chromium (Playwright) — so the images always reflect the real UI, not mocks.
 | `dashboard-cost.png` | The operator console's (`/console`) metric cards — total cost, avg latency, blocked, escalated | `capture_screenshots.py` |
 | `dashboard-latency.png` | The console's cost/latency SVG chart + recent-requests table, populated by real queries | `capture_screenshots.py` |
 | `ragas-scorecard.png` | The versioned `evaluation/results/ragas_scorecard.json` rendered as a terminal-style capture | `capture_screenshots.py` |
-| `demo.gif` | Short clip of the landing answering a question | `capture_screenshots.py` (needs `imageio-ffmpeg` or an `ffmpeg` binary) |
+| `rag-demo.gif` | Short clip of the landing answering a question | `capture_screenshots.py` (needs `imageio-ffmpeg` or an `ffmpeg` binary) |
 | `langsmith-experiment-1.png` | The LangSmith experiment run list with the five evaluators per row | **Manual** — see below |
 | `langsmith-experiment-2.png` | The `llm_as_judge` score with the evaluator's reasoning | **Manual** — see below |
 | `langsmith-experiment-3.png` | A single evaluator trace (`gpt-4o-mini`, token usage, metadata) | **Manual** — see below |

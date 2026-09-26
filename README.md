@@ -13,7 +13,7 @@
 [![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)](https://mypy-lang.org/)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-![The public landing answering a real question](docs/screenshots/demo.gif)
+![The public landing answering a real question](docs/screenshots/rag-demo.gif)
 
 </div>
 

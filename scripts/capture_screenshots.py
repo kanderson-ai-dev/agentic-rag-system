@@ -15,7 +15,7 @@ Captures, all against the real running service:
   table, populated by real queries sent through the UI.
 - ``ragas-scorecard.png`` — the versioned ``evaluation/results/
   ragas_scorecard.json`` rendered as a terminal-style capture.
-- ``demo.webm`` (and ``demo.gif`` when ffmpeg is available via
+- ``demo.webm`` (and ``rag-demo.gif`` when ffmpeg is available via
   ``imageio-ffmpeg``) — a short recording of the landing answering a question.
 
 The LangSmith experiment screenshot (``langsmith-experiment.png``) is not
@@ -99,7 +99,7 @@ def capture_landing(browser) -> float:
         try:
             page.goto(BASE_URL + "/", wait_until="networkidle")
             loaded_at = time.monotonic()
-            # The recording doubles as demo.gif: hold on the empty landing,
+            # The recording doubles as rag-demo.gif: hold on the empty landing,
             # then type the question character by character so the viewer can
             # read what is being sent — `fill` would pop it in instantly.
             page.wait_for_timeout(900)
@@ -191,14 +191,14 @@ def capture_scorecard(browser) -> None:
 
 
 def maybe_make_gif(trim_seconds: float = 0.0) -> None:
-    """Convert demo.webm → demo.gif if an ffmpeg binary is available.
+    """Convert demo.webm → rag-demo.gif if an ffmpeg binary is available.
 
     ``trim_seconds`` cuts the leading dead time (white flash while the page
     loads) from the recording, keeping a short beat of idle landing before
     the typing starts.
     """
     webm = SHOTS_DIR / "demo.webm"
-    gif = SHOTS_DIR / "demo.gif"
+    gif = SHOTS_DIR / "rag-demo.gif"
     if not webm.exists():
         return
     try:
@@ -248,7 +248,7 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
         capture_output=True,
     )
     webm.unlink()
-    print("demo.gif written")
+    print("rag-demo.gif written")
 
 
 def main() -> int:
