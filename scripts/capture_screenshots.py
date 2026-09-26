@@ -25,6 +25,7 @@ automatable — it requires an interactive LangSmith session; see
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,7 +35,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.environ.get("CAPTURE_BASE_URL", "http://127.0.0.1:8000")
 ROOT = Path(__file__).resolve().parent.parent
 SHOTS_DIR = ROOT / "docs" / "screenshots"
 SCORECARD_JSON = ROOT / "evaluation" / "results" / "ragas_scorecard.json"
@@ -211,6 +212,18 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
         return
     # Output-side -ss seeks accurately (input seek snaps to sparse keyframes).
     trim = max(0.0, trim_seconds - 0.4)
+    # The recording's last frame captures the browser context tearing down
+    # (a faded/half-rendered window) — drop the tail of the clip.
+    probe = subprocess.run(
+        [ffmpeg, "-i", str(webm)], capture_output=True, text=True
+    )
+    match = re.search(r"Duration: (\d+):(\d+):([\d.]+)", probe.stderr)
+    duration = (
+        int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
+        if match
+        else 0.0
+    )
+    keep = max(0.0, duration - trim - 0.6)
     subprocess.run(
         [
             ffmpeg,
@@ -219,6 +232,8 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
             str(webm),
             "-ss",
             f"{trim:.2f}",
+            "-t",
+            f"{keep:.2f}",
             "-vf",
             "fps=10,scale=880:-1:flags=lanczos",
             str(gif),
