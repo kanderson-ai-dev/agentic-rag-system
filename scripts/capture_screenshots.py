@@ -224,6 +224,10 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
         else 0.0
     )
     keep = max(0.0, duration - trim - 0.6)
+    # A single global palette via palettegen/paletteuse avoids the native GIF
+    # encoder's per-frame local palette + region-offsetting path, which can
+    # "ghost" a stale rectangle of solid color when its changed-region diff
+    # is wrong (seen as a half-white/olive block over part of the frame).
     subprocess.run(
         [
             ffmpeg,
@@ -235,11 +239,9 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
             "-t",
             f"{keep:.2f}",
             "-vf",
-            "fps=10,scale=880:-1:flags=lanczos",
-            # Full frames instead of diff-encoded partial tiles — some image
-            # viewers render uncomposited partial frames as blank regions.
-            "-gifflags",
-            "-transdiff-offsetting",
+            "fps=10,scale=880:-1:flags=lanczos,split[s0][s1],"
+            "[s0]palettegen=stats_mode=diff[p],"
+            "[s1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle",
             "-loop",
             "0",
             str(gif),
