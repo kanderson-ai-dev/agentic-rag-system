@@ -236,6 +236,12 @@ def maybe_make_gif(trim_seconds: float = 0.0) -> None:
             f"{keep:.2f}",
             "-vf",
             "fps=10,scale=880:-1:flags=lanczos",
+            # Full frames instead of diff-encoded partial tiles — some image
+            # viewers render uncomposited partial frames as blank regions.
+            "-gifflags",
+            "-transdiff-offsetting",
+            "-loop",
+            "0",
             str(gif),
         ],
         check=True,
