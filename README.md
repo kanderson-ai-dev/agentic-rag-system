@@ -418,6 +418,17 @@ the Tailwind CDN origin only), and CI that uses `pull_request` (never
 - Rate limiting is applied to `/auth/login` only (general API rate limiting is
   a documented future improvement).
 
+## 💼 Need this for your own project?
+
+**I build production-shaped agentic RAG systems — hybrid retrieval you can
+audit, self-correction instead of hallucination, human-in-the-loop when
+confidence runs out, and quality gates enforced in CI, not vibes.**
+
+If you need grounded, cost-accounted answers over your own knowledge base, I
+can adapt this same project to your use case: your corpus, your vector/graph
+backends, your domain's guardrail rules, your evaluation thresholds. The
+architecture is deliberately built to be specialized, not just read.
+
 ## License
 
 [MIT](LICENSE)
