@@ -246,7 +246,7 @@ packaging==24.2
     #   pinecone-plugin-assistant
 pinecone==7.3.0
     # via langchain-pinecone
-pinecone-plugin-assistant==1.8.0
+pinecone-plugin-assistant==3.0.3
     # via pinecone
 pinecone-plugin-interface==0.0.7
     # via pinecone
