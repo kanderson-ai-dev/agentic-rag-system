@@ -186,7 +186,7 @@ mdurl==0.1.2
     # via markdown-it-py
 mmh3==5.3.0
     # via chromadb
-multidict==6.9.0
+multidict==6.9.1
     # via
     #   aiohttp
     #   yarl
@@ -200,7 +200,7 @@ numpy==2.5.3
     #   langchain-chroma
     #   langchain-pinecone
     #   onnxruntime
-oauthlib==3.3.1
+oauthlib==4.0.0
     # via requests-oauthlib
 onnxruntime==1.30.0
     # via chromadb
@@ -285,7 +285,7 @@ pydantic-settings==2.15.0
     #   chromadb
 pygments==2.21.0
     # via rich
-pyjwt==2.14.0
+pyjwt==2.15.1
     # via agentic-rag-system
 pypika==0.51.1
     # via chromadb
