@@ -6,6 +6,7 @@ content of the question or the answer — to minimize exposure if the file leaks
 
 import contextlib
 import json
+import math
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,6 +46,10 @@ class UsageStore:
         # same way for databases created before the prompt registry existed.
         with contextlib.suppress(sqlite3.OperationalError):
             self._conn.execute("ALTER TABLE usage ADD COLUMN prompt_versions TEXT")
+        # Backfill `node_latencies` (JSON object {node_name: ms}) for
+        # databases created before per-node timing was persisted.
+        with contextlib.suppress(sqlite3.OperationalError):
+            self._conn.execute("ALTER TABLE usage ADD COLUMN node_latencies TEXT")
         self._conn.commit()
 
     def record(
@@ -60,14 +65,15 @@ class UsageStore:
         retry_count: int,
         session_id: str | None = None,
         prompt_versions: dict[str, int] | None = None,
+        node_latencies: dict[str, float] | None = None,
     ) -> None:
         self._conn.execute(
             """
             INSERT INTO usage
                 (timestamp, thread_id, session_id, prompt_tokens, completion_tokens,
                  cost_usd, latency_ms, blocked, escalated, retry_count,
-                 prompt_versions)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 prompt_versions, node_latencies)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now(UTC).isoformat(),
@@ -83,6 +89,11 @@ class UsageStore:
                 (
                     json.dumps(prompt_versions, sort_keys=True)
                     if prompt_versions
+                    else None
+                ),
+                (
+                    json.dumps(node_latencies, sort_keys=True)
+                    if node_latencies
                     else None
                 ),
             ),
@@ -158,17 +169,23 @@ class UsageStore:
             for row in rows
         ]
 
-    def summary_by_prompt_version(self) -> list[dict[str, Any]]:
+    def summary_by_prompt_version(
+        self, session_id: str | None = None
+    ) -> list[dict[str, Any]]:
         """Requests, average cost and average latency per `generate_answer`
         prompt version — the evidence that a prompt change is measurable.
 
         Aggregated in Python (the usage store is demo-scale) rather than via
         SQLite's JSON1 extension so it works on every bundled sqlite3.
+        Scoped to ``session_id`` like :meth:`summary` when one is given.
         """
         aggregates: dict[int, dict[str, Any]] = {}
+        where = "AND session_id = ?" if session_id is not None else ""
+        params = (session_id,) if session_id is not None else ()
         rows = self._conn.execute(
-            "SELECT prompt_versions, cost_usd, latency_ms FROM usage "
-            "WHERE prompt_versions IS NOT NULL"
+            f"SELECT prompt_versions, cost_usd, latency_ms FROM usage "
+            f"WHERE prompt_versions IS NOT NULL {where}",
+            params,
         ).fetchall()
         for versions_json, cost_usd, latency_ms in rows:
             version = json.loads(versions_json).get("generate_answer")
@@ -189,3 +206,90 @@ class UsageStore:
             }
             for version, bucket in sorted(aggregates.items())
         ]
+
+    def performance(self, session_id: str | None = None) -> dict[str, Any]:
+        """Latency/cost aggregates for the performance dashboard panel.
+
+        Returns end-to-end percentiles, per-node p50/p95 (from the persisted
+        ``node_latencies`` JSON), token and cost averages, a 7-day cost trend,
+        block/escalation rates, and per-prompt-version aggregates — all
+        scoped to ``session_id`` like :meth:`summary`.
+        """
+        where = "WHERE session_id = ?" if session_id is not None else ""
+        params = (session_id,) if session_id is not None else ()
+        rows = self._conn.execute(
+            f"""
+            SELECT timestamp, prompt_tokens, completion_tokens, cost_usd,
+                   latency_ms, blocked, escalated, node_latencies
+            FROM usage {where}
+            """,
+            params,
+        ).fetchall()
+
+        latencies = [row[4] for row in rows]
+        costs = [row[3] for row in rows]
+        tokens = [row[1] + row[2] for row in rows]
+        n = len(rows)
+
+        node_samples: dict[str, list[float]] = {}
+        for raw in (row[7] for row in rows):
+            if not raw:
+                continue
+            for node, ms in json.loads(raw).items():
+                node_samples.setdefault(node, []).append(float(ms))
+        per_node = [
+            {
+                "node": node,
+                "samples": len(samples),
+                "p50_ms": percentile(samples, 50),
+                "p95_ms": percentile(samples, 95),
+            }
+            for node, samples in sorted(node_samples.items())
+        ]
+
+        trend_rows = self._conn.execute(
+            f"""
+            SELECT substr(timestamp, 1, 10) AS day, SUM(cost_usd), COUNT(*)
+            FROM usage {where}
+            GROUP BY day
+            ORDER BY day DESC
+            LIMIT 7
+            """,
+            params,
+        ).fetchall()
+        daily_cost_trend = [
+            {"date": day, "cost_usd": cost, "requests": count}
+            for day, cost, count in reversed(trend_rows)
+        ]
+
+        return {
+            "requests": n,
+            "latency": {
+                "p50_ms": percentile(latencies, 50),
+                "p95_ms": percentile(latencies, 95),
+                "target_p50_ms": 3000,
+                "target_p95_ms": 6000,
+            },
+            "cost": {
+                "total_usd": sum(costs),
+                "avg_per_query_usd": sum(costs) / n if n else 0.0,
+                "target_per_query_usd": 0.01,
+            },
+            "tokens": {"avg_per_query": sum(tokens) / n if n else 0.0},
+            "rates": {
+                "blocked": sum(row[5] for row in rows) / n if n else 0.0,
+                "escalated": sum(row[6] for row in rows) / n if n else 0.0,
+            },
+            "per_node": per_node,
+            "daily_cost_trend": daily_cost_trend,
+            "per_prompt_version": self.summary_by_prompt_version(session_id),
+        }
+
+
+def percentile(values: list[float], pct: float) -> float:
+    """Nearest-rank percentile over a small sample set (0.0 when empty)."""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = max(0, math.ceil(pct / 100 * len(ordered)) - 1)
+    return ordered[index]

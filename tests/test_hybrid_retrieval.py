@@ -142,5 +142,5 @@ class TestRetrievalModeIsolation:
         node = make_hybrid_retrieve_node(
             retriever, graph_search, retrieval_mode="no_retrieval"
         )
-        assert node(_state()) == {"documents": []}
+        assert node(_state())["documents"] == []
         assert calls == {"vector": 0, "graph": 0}

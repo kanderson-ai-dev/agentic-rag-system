@@ -1,7 +1,21 @@
 """Shared state for the Self-RAG LangGraph workflow."""
 
+from typing import Annotated
+
 from langchain_core.documents import Document
 from typing_extensions import TypedDict
+
+
+def merge_node_latencies(
+    left: dict[str, float] | None, right: dict[str, float] | None
+) -> dict[str, float]:
+    """Accumulate per-node latency measurements across the graph run.
+
+    Each node contributes one ``{node_name: milliseconds}`` update; the
+    reducer unions them so the final state carries every node's timing —
+    persisted by the usage store for the per-node performance breakdown.
+    """
+    return {**(left or {}), **(right or {})}
 
 
 class GraphState(TypedDict):
@@ -45,6 +59,9 @@ class GraphState(TypedDict):
             LLM calls resolve those exact versions, so a thread paused for
             human review keeps its original prompts even if a promotion lands
             while it waits.
+        node_latencies: Per-node wall-clock milliseconds, accumulated by the
+            ``timed_node`` decorator via ``merge_node_latencies``. Feeds the
+            per-node p50/p95 breakdown on the performance dashboard.
     """
 
     question: str
@@ -59,3 +76,4 @@ class GraphState(TypedDict):
     speculative_context: str
     speculative_question: str
     prompt_versions: dict[str, int]
+    node_latencies: Annotated[dict[str, float], merge_node_latencies]

@@ -4,7 +4,7 @@ import functools
 import threading
 import time
 from collections.abc import Callable
-from typing import ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar, cast
 
 from prometheus_client import Counter, Gauge, Histogram
 
@@ -65,18 +65,25 @@ def reset_backend_health() -> None:
 
 
 def timed_node(node_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Decorate a graph node to record its latency in the histogram."""
+    """Decorate a graph node to record its latency in the histogram and in
+    the graph state's ``node_latencies`` (persisted by the usage store so the
+    dashboard can break end-to-end latency down per node)."""
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             start = time.perf_counter()
             try:
-                return func(*args, **kwargs)
+                result = func(*args, **kwargs)
             finally:
                 agent_node_latency_seconds.labels(node=node_name).observe(
                     time.perf_counter() - start
                 )
+            if isinstance(result, dict):
+                merged = dict(result.get("node_latencies") or {})
+                merged[node_name] = (time.perf_counter() - start) * 1000.0
+                return cast(R, {**result, "node_latencies": merged})
+            return result
 
         return wrapper
 

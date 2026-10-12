@@ -144,6 +144,46 @@
       <h3>Quality (Evaluation Driven Development)</h3>
       <div id="quality" class="summary"></div>
 
+      <h3>Performance</h3>
+      <p class="muted small">
+        Session-scoped latency, cost and token telemetry — per node and
+        end-to-end, against the project targets (p50 ≤ 3s, p95 ≤ 6s,
+        ≤ $0.01/query).
+      </p>
+      <div id="perf-cards" class="summary"></div>
+      <p id="perf-empty" class="empty-state" hidden>
+        No requests recorded this session yet — ask a question to populate
+        real latency and cost telemetry.
+      </p>
+
+      <h4>Latency by graph node</h4>
+      <div id="perf-nodes" class="perf-nodes" role="list"></div>
+      <p id="perf-nodes-empty" class="muted small" hidden>
+        Per-node timings appear after a request runs the full graph.
+      </p>
+
+      <h4>Human vs. Agent <span class="perf-tag">estimate</span></h4>
+      <div id="human-vs-agent" class="perf-compare"></div>
+      <p id="perf-hva-note" class="muted small"></p>
+
+      <h4>Cost &amp; latency by prompt version</h4>
+      <div class="table-wrap">
+        <table id="perf-versions" class="recent">
+          <thead>
+            <tr>
+              <th scope="col">generate_answer</th>
+              <th scope="col">Requests</th>
+              <th scope="col">Avg cost</th>
+              <th scope="col">Avg latency</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="perf-versions-empty" class="muted small" hidden>
+        Prompt-version telemetry appears once requests are recorded.
+      </p>
+
       <h3>Recent requests</h3>
       <div class="table-wrap" id="table-wrap">
         <table id="recent-table" class="recent">

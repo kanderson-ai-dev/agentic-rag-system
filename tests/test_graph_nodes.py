@@ -257,7 +257,7 @@ class TestHumanReviewNode:
 
         result = node(_state())
 
-        assert result == {"human_decision": "approve"}
+        assert result["human_decision"] == "approve"
 
     def test_override_decision_sets_generation_directly(self, monkeypatch) -> None:
         monkeypatch.setattr(
@@ -269,7 +269,8 @@ class TestHumanReviewNode:
 
         result = node(_state())
 
-        assert result == {"human_decision": "override", "generation": "human-provided answer"}
+        assert result["human_decision"] == "override"
+        assert result["generation"] == "human-provided answer"
 
     def test_retry_decision_resets_question_and_retry_count(self, monkeypatch) -> None:
         monkeypatch.setattr(
@@ -281,9 +282,7 @@ class TestHumanReviewNode:
 
         result = node(_state(question="original question", retry_count=2))
 
-        assert result == {
-            "human_decision": "retry",
-            "question": "a clearer question",
-            "retry_count": 0,
-            "web_search_needed": False,
-        }
+        assert result["human_decision"] == "retry"
+        assert result["question"] == "a clearer question"
+        assert result["retry_count"] == 0
+        assert result["web_search_needed"] is False

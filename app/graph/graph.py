@@ -133,6 +133,7 @@ def initial_state(question: str) -> dict[str, Any]:
         "speculative_context": "",
         "speculative_question": "",
         "prompt_versions": {},
+        "node_latencies": {},
     }
 
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
+from app.core.config import Settings, get_settings
 from app.core.dependencies import get_session_id
 from app.services.usage_store import UsageStore
 
@@ -46,6 +47,70 @@ def recent(
 ) -> list[dict[str, Any]]:
     """Return the most recent requests' usage metadata, scoped like `/summary`."""
     return _get_usage_store(request).recent(limit=limit, session_id=session_id)
+
+
+def _human_vs_agent(
+    perf: dict[str, Any], settings: Settings
+) -> dict[str, Any]:
+    """Compare the measured agent cost/time to an estimated human baseline.
+
+    The human side is a stated assumption (minutes + hourly rate from
+    settings) — it is labelled an estimate in the payload and in the UI.
+    The agent side uses only real, session-scoped aggregates.
+    """
+    human_minutes = settings.human_minutes_per_query
+    human_hourly = settings.human_hourly_usd
+    human_cost_per_query = human_hourly * (human_minutes / 60.0)
+    requests = perf["requests"]
+    agent_cost = perf["cost"]["avg_per_query_usd"]
+    agent_seconds = perf["latency"]["p50_ms"] / 1000.0
+    human_total = human_cost_per_query * requests
+    agent_total = perf["cost"]["total_usd"]
+    savings_pct = (
+        (1 - agent_total / human_total) * 100.0 if human_total > 0 else 0.0
+    )
+    return {
+        "label": "estimate",
+        "assumptions": {
+            "human_minutes_per_query": human_minutes,
+            "human_hourly_usd": human_hourly,
+        },
+        "per_query": {
+            "human_cost_usd": human_cost_per_query,
+            "human_seconds": human_minutes * 60.0,
+            "agent_cost_usd": agent_cost,
+            "agent_seconds": agent_seconds,
+        },
+        "totals": {
+            "requests": requests,
+            "human_cost_usd": human_total,
+            "agent_cost_usd": agent_total,
+        },
+        "cost_savings_pct": savings_pct,
+    }
+
+
+@router.get("/performance")
+def performance(
+    request: Request,
+    session_id: str | None = Depends(get_session_id),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Session-scoped performance telemetry for the dashboard panel.
+
+    Per-node p50/p95 latency (persisted per request), end-to-end p50/p95,
+    average and accumulated cost, tokens/query, a 7-day cost trend,
+    block/escalation rates and per-prompt-version aggregates — plus the
+    Human-vs-Agent comparison with its assumptions echoed back.
+    """
+    perf = _get_usage_store(request).performance(session_id=session_id)
+    perf["human_vs_agent"] = _human_vs_agent(perf, settings)
+    # The daily budget gate lands in a later phase; the field is echoed when
+    # configured so the panel can already render the slot.
+    perf["budget"] = {
+        "daily_limit_usd": getattr(settings, "daily_budget_usd", None)
+    }
+    return perf
 
 
 # Success thresholds from the project's "Objetivo del proyecto" (PLAN.md / README.md).

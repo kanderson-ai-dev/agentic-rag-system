@@ -118,7 +118,10 @@ class TestTimedNode:
         def node(state):
             return {"result": "ok"}
 
-        assert node({"x": 1}) == {"result": "ok"}
+        result = node({"x": 1})
+        assert result["result"] == "ok"
+        # Per-node timing is stamped into the state update for the dashboard.
+        assert result["node_latencies"]["test_node"] >= 0
 
 
 class TestDashboardEndpoints:

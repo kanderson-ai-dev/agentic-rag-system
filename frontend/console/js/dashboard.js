@@ -135,6 +135,172 @@ function renderQuality(quality) {
   }
 }
 
+// --- Performance (Phase 8) -------------------------------------------------
+// Green/amber/red vs. the project targets, always paired with a text label —
+// colour is never the only signal.
+function perfBand(value, target, slack) {
+  if (value <= target) return { cls: "pass", label: "on target" };
+  if (value <= target * slack) return { cls: "warn", label: "above target" };
+  return { cls: "fail", label: "over target" };
+}
+
+function perfCard(value, label, band) {
+  const stat = document.createElement("div");
+  stat.className = `stat perf-stat ${band.cls}`;
+  const v = document.createElement("div");
+  v.className = "value";
+  v.textContent = value;
+  const l = document.createElement("div");
+  l.className = "label";
+  l.textContent = label;
+  const tag = document.createElement("span");
+  tag.className = "threshold";
+  tag.textContent = ` ${band.label}`;
+  l.appendChild(tag);
+  stat.append(v, l);
+  return stat;
+}
+
+function renderPerformance(perf) {
+  const cards = $("#perf-cards");
+  const nodes = $("#perf-nodes");
+  const hva = $("#human-vs-agent");
+  const versionsBody = $("#perf-versions tbody");
+  cards.replaceChildren();
+  nodes.replaceChildren();
+  hva.replaceChildren();
+  versionsBody.replaceChildren();
+
+  const empty = !perf || !perf.requests;
+  $("#perf-empty").hidden = !empty;
+  $("#perf-nodes-empty").hidden = !empty;
+
+  const lat = perf?.latency ?? {};
+  const cost = perf?.cost ?? {};
+  const tokens = perf?.tokens ?? {};
+
+  cards.append(
+    perfCard(
+      formatLatency(lat.p50_ms ?? 0),
+      "p50 latency (≤ 3s)",
+      empty ? { cls: "", label: "no data" } : perfBand(lat.p50_ms, lat.target_p50_ms, 1.5)
+    ),
+    perfCard(
+      formatLatency(lat.p95_ms ?? 0),
+      "p95 latency (≤ 6s)",
+      empty ? { cls: "", label: "no data" } : perfBand(lat.p95_ms, lat.target_p95_ms, 1.5)
+    ),
+    perfCard(
+      formatUsd(cost.avg_per_query_usd ?? 0),
+      "Avg cost / query (≤ $0.01)",
+      empty ? { cls: "", label: "no data" } : perfBand(cost.avg_per_query_usd, cost.target_per_query_usd, 2)
+    ),
+    perfCard(formatUsd(cost.total_usd ?? 0), "Session cost", { cls: "", label: `${perf?.requests ?? 0} requests` }),
+    perfCard(
+      formatTokens(Math.round(tokens.avg_per_query ?? 0)),
+      "Avg tokens / query",
+      { cls: "", label: "" }
+    )
+  );
+
+  if (!empty) {
+    // Per-node p95 bars, normalized to the slowest node.
+    const perNode = perf.per_node || [];
+    const maxP95 = Math.max(...perNode.map((n) => n.p95_ms), 1);
+    for (const node of perNode) {
+      const row = document.createElement("div");
+      row.className = "perf-bar-row";
+      row.setAttribute("role", "listitem");
+      const name = document.createElement("span");
+      name.className = "perf-bar-name";
+      name.textContent = node.node;
+      const track = document.createElement("div");
+      track.className = "perf-bar-track";
+      const bar = document.createElement("div");
+      bar.className = "perf-bar";
+      bar.style.width = `${Math.max(2, (node.p95_ms / maxP95) * 100)}%`;
+      track.appendChild(bar);
+      const value = document.createElement("span");
+      value.className = "perf-bar-value";
+      value.textContent = `p50 ${formatLatency(node.p50_ms)} · p95 ${formatLatency(node.p95_ms)} · n=${node.samples}`;
+      row.append(name, track, value);
+      nodes.appendChild(row);
+    }
+
+    // Human vs. Agent — the human side is always labelled an estimate.
+    const h = perf.human_vs_agent || {};
+    const pq = h.per_query || {};
+    const tt = h.totals || {};
+    const cols = [
+      {
+        title: "Human (estimate)",
+        lines: [
+          `${formatUsd(pq.human_cost_usd ?? 0)} / query`,
+          `${Math.round((pq.human_seconds ?? 0) / 60)} min / query`,
+          `${formatUsd(tt.human_cost_usd ?? 0)} for ${tt.requests ?? 0} queries`,
+        ],
+      },
+      {
+        title: "Agent (measured)",
+        lines: [
+          `${formatUsd(pq.agent_cost_usd ?? 0)} / query`,
+          `${(pq.agent_seconds ?? 0).toFixed(1)}s / query`,
+          `${formatUsd(tt.agent_cost_usd ?? 0)} for ${tt.requests ?? 0} queries`,
+        ],
+      },
+    ];
+    for (const col of cols) {
+      const box = document.createElement("div");
+      box.className = "perf-col";
+      const title = document.createElement("strong");
+      title.textContent = col.title;
+      box.appendChild(title);
+      for (const line of col.lines) {
+        const p = document.createElement("p");
+        p.className = "muted small";
+        p.textContent = line;
+        box.appendChild(p);
+      }
+      hva.appendChild(box);
+    }
+    const savings = document.createElement("div");
+    savings.className = "perf-col perf-savings";
+    const big = document.createElement("strong");
+    big.textContent = `${(h.cost_savings_pct ?? 0).toFixed(1)}%`;
+    const sub = document.createElement("p");
+    sub.className = "muted small";
+    sub.textContent = "cheaper than the human baseline";
+    savings.append(big, sub);
+    hva.appendChild(savings);
+
+    const note = $("#perf-hva-note");
+    const a = h.assumptions || {};
+    note.textContent =
+      `Assumes a human reviewer spends ~${a.human_minutes_per_query ?? "—"} min ` +
+      `per query at $${a.human_hourly_usd ?? "—"}/h. Human side is an estimate; ` +
+      "agent side is measured telemetry for this session.";
+  } else {
+    $("#perf-hva-note").textContent = "";
+  }
+
+  const versions = perf?.per_prompt_version || [];
+  $("#perf-versions-empty").hidden = versions.length > 0;
+  for (const v of versions) {
+    const tr = document.createElement("tr");
+    for (const text of [
+      `v${v.generate_answer_version}`,
+      String(v.requests),
+      formatUsd(v.avg_cost_usd),
+      formatLatency(v.avg_latency_ms),
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    versionsBody.appendChild(tr);
+  }
+}
+
 // --- SVG chart (no libraries) ---------------------------------------------
 // A single small viewBox with two normalized polylines — latency (accent) and
 // cost (success) — plotted against request order (oldest → newest). Values are
@@ -409,10 +575,11 @@ function setupDashboardSort() {
 async function refreshDashboard() {
   renderDashboardSkeleton();
   try {
-    const [summary, recent, quality] = await Promise.all([
+    const [summary, recent, quality, perf] = await Promise.all([
       api("/api/v1/dashboard/summary"),
       api("/api/v1/dashboard/recent?limit=200"),
       api("/api/v1/dashboard/quality"),
+      api("/api/v1/dashboard/performance"),
     ]);
 
     dashboard.recent = Array.isArray(recent) ? recent : [];
@@ -420,12 +587,19 @@ async function refreshDashboard() {
 
     renderSummary(summary);
     renderQuality(quality);
+    renderPerformance(perf);
     renderChart(dashboard.recent);
     renderRecentTable();
   } catch {
     // Dashboard is best-effort; stay in the empty state if the endpoint is
     // unavailable.
     $("#summary").replaceChildren();
+    $("#perf-cards").replaceChildren();
+    $("#perf-nodes").replaceChildren();
+    $("#perf-empty").hidden = false;
+    $("#perf-nodes-empty").hidden = false;
+    $("#human-vs-agent").replaceChildren();
+    $("#perf-versions tbody").replaceChildren();
     $("#chart").replaceChildren();
     $("#chart-figure").hidden = true;
     $("#chart-empty").hidden = true;

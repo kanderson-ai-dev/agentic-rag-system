@@ -85,6 +85,7 @@ def query(
             retry_count=result.get("retry_count", 0),
             session_id=session_id,
             prompt_versions=result.get("prompt_versions") or None,
+            node_latencies=result.get("node_latencies") or None,
         )
 
     if result.get("blocked"):
