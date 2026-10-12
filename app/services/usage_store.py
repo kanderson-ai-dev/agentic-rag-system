@@ -5,6 +5,7 @@ content of the question or the answer — to minimize exposure if the file leaks
 """
 
 import contextlib
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +41,10 @@ class UsageStore:
         # Backfill `session_id` for databases created before this column existed.
         with contextlib.suppress(sqlite3.OperationalError):
             self._conn.execute("ALTER TABLE usage ADD COLUMN session_id TEXT")
+        # Backfill `prompt_versions` (JSON object {prompt_name: version}) the
+        # same way for databases created before the prompt registry existed.
+        with contextlib.suppress(sqlite3.OperationalError):
+            self._conn.execute("ALTER TABLE usage ADD COLUMN prompt_versions TEXT")
         self._conn.commit()
 
     def record(
@@ -54,13 +59,15 @@ class UsageStore:
         escalated: bool,
         retry_count: int,
         session_id: str | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._conn.execute(
             """
             INSERT INTO usage
                 (timestamp, thread_id, session_id, prompt_tokens, completion_tokens,
-                 cost_usd, latency_ms, blocked, escalated, retry_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cost_usd, latency_ms, blocked, escalated, retry_count,
+                 prompt_versions)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now(UTC).isoformat(),
@@ -73,6 +80,11 @@ class UsageStore:
                 int(blocked),
                 int(escalated),
                 retry_count,
+                (
+                    json.dumps(prompt_versions, sort_keys=True)
+                    if prompt_versions
+                    else None
+                ),
             ),
         )
         self._conn.commit()
@@ -120,7 +132,8 @@ class UsageStore:
         rows = self._conn.execute(
             f"""
             SELECT timestamp, thread_id, prompt_tokens, completion_tokens,
-                   cost_usd, latency_ms, blocked, escalated, retry_count
+                   cost_usd, latency_ms, blocked, escalated, retry_count,
+                   prompt_versions
             FROM usage {where}
             ORDER BY id DESC
             LIMIT ?
@@ -138,6 +151,41 @@ class UsageStore:
                 "blocked": bool(row[6]),
                 "escalated": bool(row[7]),
                 "retry_count": row[8],
+                "prompt_versions": (
+                    json.loads(row[9]) if row[9] else None
+                ),
             }
             for row in rows
+        ]
+
+    def summary_by_prompt_version(self) -> list[dict[str, Any]]:
+        """Requests, average cost and average latency per `generate_answer`
+        prompt version — the evidence that a prompt change is measurable.
+
+        Aggregated in Python (the usage store is demo-scale) rather than via
+        SQLite's JSON1 extension so it works on every bundled sqlite3.
+        """
+        aggregates: dict[int, dict[str, Any]] = {}
+        rows = self._conn.execute(
+            "SELECT prompt_versions, cost_usd, latency_ms FROM usage "
+            "WHERE prompt_versions IS NOT NULL"
+        ).fetchall()
+        for versions_json, cost_usd, latency_ms in rows:
+            version = json.loads(versions_json).get("generate_answer")
+            if version is None:
+                continue
+            bucket = aggregates.setdefault(
+                int(version), {"requests": 0, "cost": 0.0, "latency": 0.0}
+            )
+            bucket["requests"] += 1
+            bucket["cost"] += cost_usd
+            bucket["latency"] += latency_ms
+        return [
+            {
+                "generate_answer_version": version,
+                "requests": bucket["requests"],
+                "avg_cost_usd": bucket["cost"] / bucket["requests"],
+                "avg_latency_ms": bucket["latency"] / bucket["requests"],
+            }
+            for version, bucket in sorted(aggregates.items())
         ]

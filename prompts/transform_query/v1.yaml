@@ -1,0 +1,15 @@
+name: transform_query
+version: 1
+status: promoted
+author: kanderson
+created_at: 2026-10-12T00:00:00Z
+target_model: gpt-4o-mini
+description: Rewrites the question to improve retrieval on the correction-loop retry.
+changelog: Initial version (extracted from code)
+variables:
+  - question
+system: |
+  You rewrite user questions to improve retrieval from a vector database. Look at the input question and try to reason about the underlying semantic intent, then produce a clearer, more specific version of the question. Return only the rewritten question, with no additional commentary.
+human: |
+  Original question: {question}
+evaluation: null

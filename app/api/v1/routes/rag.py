@@ -69,6 +69,7 @@ def query(
             escalated=bool(result.get("__interrupt__")),
             retry_count=result.get("retry_count", 0),
             session_id=session_id,
+            prompt_versions=result.get("prompt_versions") or None,
         )
 
     if result.get("blocked"):

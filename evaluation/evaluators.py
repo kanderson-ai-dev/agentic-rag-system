@@ -14,7 +14,8 @@ from typing import Any
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from app.graph.prompts import LLM_JUDGE_SYSTEM_PROMPT
+from app.graph.prompts import get_system_text
+from app.services.prompt_registry import PromptName
 
 _FAITHFULNESS_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -75,12 +76,14 @@ _CONTEXT_RECALL_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
-LLM_JUDGE_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        ("system", LLM_JUDGE_SYSTEM_PROMPT),
-        ("human", "Question: {question}\n\nAnswer:\n{answer}"),
-    ]
-)
+def _llm_judge_prompt() -> ChatPromptTemplate:
+    """Build the judge prompt from the *promoted* registry version each call."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", get_system_text(PromptName.LLM_JUDGE)),
+            ("human", "Question: {question}\n\nAnswer:\n{answer}"),
+        ]
+    )
 
 
 @lru_cache
@@ -165,7 +168,7 @@ def llm_as_judge_evaluator(run: Any, example: Any) -> dict[str, Any]:
     """Rubric LLM-as-judge (1-5) for correctness, usefulness and safety."""
     question, answer, _ = _extract_qa(run)
 
-    chain = LLM_JUDGE_PROMPT | _get_llm() | StrOutputParser()
+    chain = _llm_judge_prompt() | _get_llm() | StrOutputParser()
     raw = chain.invoke({"question": question, "answer": answer})
     try:
         scores = json.loads(raw)

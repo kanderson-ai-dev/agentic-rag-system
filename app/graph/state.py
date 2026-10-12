@@ -40,6 +40,11 @@ class GraphState(TypedDict):
             was generated from.
         speculative_question: The question the speculative answer was
             generated for.
+        prompt_versions: The prompt versions (``{prompt_name: version}``) the
+            thread started with, pinned by the guardrail node on first pass.
+            LLM calls resolve those exact versions, so a thread paused for
+            human review keeps its original prompts even if a promotion lands
+            while it waits.
     """
 
     question: str
@@ -53,3 +58,4 @@ class GraphState(TypedDict):
     speculative_generation: str
     speculative_context: str
     speculative_question: str
+    prompt_versions: dict[str, int]

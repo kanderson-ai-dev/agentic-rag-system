@@ -1,0 +1,22 @@
+name: grade_documents
+version: 1
+status: promoted
+author: kanderson
+created_at: 2026-10-12T00:00:00Z
+target_model: gpt-4o-mini
+description: Grades each retrieved document for relevance to the question (batched yes/no).
+changelog: Initial version (extracted from code)
+variables:
+  - documents
+  - question
+system: |
+  You are a grader assessing the relevance of retrieved documents to a user question.
+  Score EACH numbered document 'yes' or 'no' - 'yes' if it is relevant to the question. It does not need to be a strict, exhaustive match - the goal is to filter out documents that are clearly unrelated.
+  Return one score per document, in the same order they appear.
+human: |
+  Retrieved documents:
+
+  {documents}
+
+  User question: {question}
+evaluation: null

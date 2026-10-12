@@ -86,7 +86,9 @@ class FakeGrader:
     def __init__(self, relevant_keyword: str = "LangGraph") -> None:
         self.relevant_keyword = relevant_keyword
 
-    def invoke(self, inputs: dict[str, Any]) -> dict[str, list[str]]:
+    def invoke(
+        self, inputs: dict[str, Any], config: dict[str, Any] | None = None
+    ) -> dict[str, list[str]]:
         blocks = re.split(r"\[\d+\] ", inputs["documents"])[1:]
         return {
             "scores": [
@@ -98,14 +100,14 @@ class FakeGrader:
 class FakeGenerationChain:
     """Returns a deterministic answer derived from the provided context."""
 
-    def invoke(self, inputs: dict[str, Any]) -> str:
+    def invoke(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> str:
         return f"Answer based on: {inputs['context'][:40]}"
 
 
 class FakeRewriterChain:
     """Appends a marker to the question to simulate a rewrite."""
 
-    def invoke(self, inputs: dict[str, Any]) -> str:
+    def invoke(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> str:
         return f"{inputs['question']} (rewritten)"
 
 
@@ -136,6 +138,17 @@ def fake_grader() -> FakeGrader:
 
 def _no_graph_results(_question: str) -> list[Document]:
     return []
+
+
+@pytest.fixture(autouse=True)
+def _reset_prompt_registry_singleton():
+    """Isolation for the process-wide prompt registry: any registry a test
+    swaps in via `set_registry()` is dropped afterwards, so mutations a test
+    performs on a tmp-dir registry can never leak into the next test."""
+    yield
+    from app.graph import prompts as prompts_module
+
+    prompts_module.set_registry(None)
 
 
 def build_test_graph(

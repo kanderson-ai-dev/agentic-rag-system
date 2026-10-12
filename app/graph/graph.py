@@ -130,6 +130,7 @@ def initial_state(question: str) -> dict[str, Any]:
         "speculative_generation": "",
         "speculative_context": "",
         "speculative_question": "",
+        "prompt_versions": {},
     }
 
 
@@ -183,6 +184,13 @@ def build_default_graph(
     llm = build_chat_model(settings, token_handler)
     vector_store_service = build_vector_store_service(settings)
     graph_store_service = build_graph_store_service(settings)
+
+    # Eagerly load the prompt registry and publish the promoted versions, so a
+    # broken/missing prompts/ tree surfaces as a startup error instead of a
+    # mid-request failure.
+    from app.graph.prompts import active_versions
+
+    active_versions()
 
     retriever = vector_store_service.as_retriever(top_k=settings.retriever_top_k)
     graph_search_fn = graph_store_service.graph_search

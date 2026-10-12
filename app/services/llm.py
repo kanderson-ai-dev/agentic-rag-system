@@ -14,11 +14,8 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings
-from app.graph.prompts import (
-    GENERATE_ANSWER_PROMPT,
-    GRADE_DOCUMENTS_PROMPT,
-    TRANSFORM_QUERY_PROMPT,
-)
+from app.graph.prompts import RegistryPrompt
+from app.services.prompt_registry import PromptName
 
 # Hard cap on generated answer length. The prompt already asks for at most
 # three sentences (~150 tokens); the bound only protects tail latency.
@@ -53,17 +50,21 @@ def build_chat_model(
 
 
 def build_grader_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
-    """Chain that grades all retrieved documents in a single LLM call."""
+    """Chain that grades all retrieved documents in a single LLM call.
+
+    The prompt resolves lazily from the registry on every invoke, so a
+    promotion takes effect without rebuilding the chain or the graph.
+    """
     structured_llm = llm.with_structured_output(GradeDocuments)
-    return GRADE_DOCUMENTS_PROMPT | structured_llm
+    return RegistryPrompt(PromptName.GRADE_DOCUMENTS) | structured_llm
 
 
 def build_generation_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
     """Chain that generates the final answer from relevant context."""
     bounded_llm = llm.bind(max_tokens=GENERATION_MAX_TOKENS)
-    return GENERATE_ANSWER_PROMPT | bounded_llm | StrOutputParser()
+    return RegistryPrompt(PromptName.GENERATE_ANSWER) | bounded_llm | StrOutputParser()
 
 
 def build_rewriter_chain(llm: BaseChatModel) -> Runnable[Any, Any]:
     """Chain that rewrites the question to improve retrieval."""
-    return TRANSFORM_QUERY_PROMPT | llm | StrOutputParser()
+    return RegistryPrompt(PromptName.TRANSFORM_QUERY) | llm | StrOutputParser()

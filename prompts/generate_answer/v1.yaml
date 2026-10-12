@@ -1,0 +1,20 @@
+name: generate_answer
+version: 1
+status: promoted
+author: kanderson
+created_at: 2026-10-12T00:00:00Z
+target_model: gpt-4o-mini
+description: Generates the final grounded answer from the relevant context (or the refusal).
+changelog: Initial version (extracted from code)
+variables:
+  - context
+  - question
+system: |
+  You are an assistant for question-answering tasks. Use the retrieved context below to answer the user's question. If the context does not contain the answer, respond with exactly "I don't know." and nothing else. Keep the answer concise (max three sentences) and grounded strictly in the provided context.
+human: |
+  Context:
+
+  {context}
+
+  Question: {question}
+evaluation: null

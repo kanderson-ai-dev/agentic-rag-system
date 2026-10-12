@@ -10,6 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ app/
 COPY frontend/ frontend/
 COPY evaluation/ evaluation/
+# Versioned prompt artifacts (the prompt registry). Writes inside the
+# container are ephemeral — mount a volume to persist promotions/rollbacks.
+COPY prompts/ prompts/
 
 # Run as a non-root user with a writable data directory.
 RUN useradd --create-home appuser \

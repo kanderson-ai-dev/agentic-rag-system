@@ -108,14 +108,16 @@ def screen_output(text: str, protected_texts: Iterable[str] | None = None) -> st
     """Detect reflected injected instructions or system-prompt leakage.
 
     Returns a reason string if the output is flagged, else `None`. Callers can
-    inject their own ``protected_texts`` for unit testing; by default the graph's
-    system prompts are used.
+    inject their own ``protected_texts`` for unit testing; by default the
+    *currently promoted* system prompts are used — recomputed on every call so
+    a promotion can never leave a stale snapshot that a new prompt would leak
+    past.
     """
     reflected = detect_prompt_injection(text)
     if reflected:
         return f"reflected_injection:{reflected}"
 
-    protected = protected_texts if protected_texts is not None else SYSTEM_PROMPT_TEXTS
+    protected = protected_texts if protected_texts is not None else _system_prompt_texts()
     for prompt_text in protected:
         if _shared_ngrams(text, prompt_text) >= LEAK_NGRAM_THRESHOLD:
             return "system_prompt_leak"
@@ -123,20 +125,15 @@ def screen_output(text: str, protected_texts: Iterable[str] | None = None) -> st
 
 
 def _system_prompt_texts() -> list[str]:
-    """Extract the system-message text from the graph's prompt templates."""
-    from app.graph.prompts import (
-        GENERATE_ANSWER_PROMPT,
-        GRADE_DOCUMENTS_PROMPT,
-        TRANSFORM_QUERY_PROMPT,
-    )
+    """System text of the currently *promoted* prompts, read live each call."""
+    from app.graph.prompts import get_registry
+    from app.services.prompt_registry import PromptName
 
-    texts: list[str] = []
-    for prompt in (GRADE_DOCUMENTS_PROMPT, GENERATE_ANSWER_PROMPT, TRANSFORM_QUERY_PROMPT):
-        for message in prompt.messages:
-            template = getattr(getattr(message, "prompt", None), "template", None)
-            if template:
-                texts.append(template)
-    return texts
-
-
-SYSTEM_PROMPT_TEXTS = _system_prompt_texts()
+    return [
+        get_registry().promoted(name).system
+        for name in (
+            PromptName.GRADE_DOCUMENTS,
+            PromptName.GENERATE_ANSWER,
+            PromptName.TRANSFORM_QUERY,
+        )
+    ]

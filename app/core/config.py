@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     retriever_top_k: int = 4
     max_question_chars: int = DEFAULT_MAX_QUESTION_CHARS
 
+    # --- Prompt registry (versioned prompt artifacts) ---
+    prompts_dir: str = "prompts"
+
     # --- Checkpointing (required for human-in-the-loop interrupts) ---
     checkpoint_db_path: str = "data/checkpoints.sqlite"
 

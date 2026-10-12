@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import ParamSpec, TypeVar
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -32,6 +32,11 @@ agent_backend_errors_total = Counter(
     "agent_backend_errors_total",
     "Total retrieval backend failures (timeouts and errors) by backend.",
     labelnames=["backend"],
+)
+agent_prompt_active_version = Gauge(
+    "agent_prompt_active_version",
+    "Currently promoted prompt version by prompt name.",
+    labelnames=["prompt"],
 )
 
 # Last observed outcome per retrieval backend, written from the request path

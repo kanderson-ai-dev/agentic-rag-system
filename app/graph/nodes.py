@@ -21,17 +21,33 @@ from app.core.metrics import (
     timed_node,
 )
 from app.graph.guardrails import detect_prompt_injection, sanitize_input, screen_output
+from app.graph.prompts import active_versions
 from app.graph.state import GraphState
 
 logger = get_logger(__name__)
 
 
 class Invokable(Protocol):
-    def invoke(self, input: Any) -> Any: ...  # noqa: A002
+    def invoke(self, input: Any, config: Any | None = None) -> Any: ...  # noqa: A002
 
 
 NodeFn = Callable[[GraphState], dict[str, Any]]
 """Signature shared by every compiled graph node produced here."""
+
+
+def _llm_config(prompt_name: str, versions: dict[str, int]) -> dict[str, Any]:
+    """Runnable config stamping prompt attribution on every LLM call.
+
+    Propagates as LangSmith run metadata/tags (which prompt produced the
+    output is always known) without changing the prompt variables.
+    """
+    return {
+        "metadata": {
+            "prompt_versions": versions,
+            "prompt_version": versions.get(prompt_name),
+        },
+        "tags": [f"prompt:{prompt_name}@{versions.get(prompt_name) or 'promoted'}"],
+    }
 
 # Per-backend ceiling on retrieval time. A backend that exceeds it
 # contributes an empty result set instead of stalling the request.
@@ -175,19 +191,38 @@ def make_grade_documents_node(
         )
         context = "\n\n".join(document.page_content for document in documents)
 
+        versions = state.get("prompt_versions") or {}
         updates: dict[str, Any] = {}
         if speculative_generation_chain is None:
             scores = _scores(
-                grader_chain.invoke({"question": question, "documents": serialized})
+                grader_chain.invoke(
+                    {
+                        "question": question,
+                        "documents": serialized,
+                        "prompt_version": versions.get("grade_documents"),
+                    },
+                    config=_llm_config("grade_documents", versions),
+                )
             )
         else:
             with ThreadPoolExecutor(max_workers=2) as executor:
                 scores_future = executor.submit(
-                    grader_chain.invoke, {"question": question, "documents": serialized}
+                    grader_chain.invoke,
+                    {
+                        "question": question,
+                        "documents": serialized,
+                        "prompt_version": versions.get("grade_documents"),
+                    },
+                    _llm_config("grade_documents", versions),
                 )
                 generation_future = executor.submit(
                     speculative_generation_chain.invoke,
-                    {"context": context, "question": question},
+                    {
+                        "context": context,
+                        "question": question,
+                        "prompt_version": versions.get("generate_answer"),
+                    },
+                    _llm_config("generate_answer", versions),
                 )
                 scores = _scores(scores_future.result())
                 updates["speculative_generation"] = generation_future.result()
@@ -225,7 +260,15 @@ def make_generate_node(generation_chain: Invokable) -> NodeFn:
             and state.get("speculative_question") == state["question"]
         ):
             return {"generation": speculative}
-        answer = generation_chain.invoke({"context": context, "question": state["question"]})
+        versions = state.get("prompt_versions") or {}
+        answer = generation_chain.invoke(
+            {
+                "context": context,
+                "question": state["question"],
+                "prompt_version": versions.get("generate_answer"),
+            },
+            config=_llm_config("generate_answer", versions),
+        )
         return {"generation": answer}
 
     return generate_node
@@ -236,7 +279,14 @@ def make_transform_query_node(rewriter_chain: Invokable) -> NodeFn:
 
     @timed_node("transform_query")
     def transform_query_node(state: GraphState) -> dict[str, Any]:
-        rewritten_question = rewriter_chain.invoke({"question": state["question"]})
+        versions = state.get("prompt_versions") or {}
+        rewritten_question = rewriter_chain.invoke(
+            {
+                "question": state["question"],
+                "prompt_version": versions.get("transform_query"),
+            },
+            config=_llm_config("transform_query", versions),
+        )
         return {
             "question": rewritten_question,
             "retry_count": state["retry_count"] + 1,
@@ -304,7 +354,14 @@ def make_guardrail_node(max_length: int = DEFAULT_MAX_QUESTION_CHARS) -> NodeFn:
             or len(raw_question) > max_length
             or detect_prompt_injection(question) is not None
         )
-        return {"question": question, "blocked": blocked}
+        # Pin the promoted prompt set for this thread: every LLM call resolves
+        # these exact versions, so a paused HITL thread keeps the prompts it
+        # started with even if a promotion lands while it waits.
+        return {
+            "question": question,
+            "blocked": blocked,
+            "prompt_versions": active_versions(),
+        }
 
     return guardrail_node
 
