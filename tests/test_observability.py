@@ -58,6 +58,8 @@ class TestSecretRedaction:
             "auth_token": "secret",
             "password": "secret",
             "authorization": "Bearer secret",
+            "langfuse_secret_key": "sk-lf-secret",
+            "langfuse_public_key": "pk-lf-value",
             "normal_field": "ok",
         }
 
@@ -67,4 +69,6 @@ class TestSecretRedaction:
         assert redacted["auth_token"] == "***"
         assert redacted["password"] == "***"
         assert redacted["authorization"] == "***"
+        assert redacted["langfuse_secret_key"] == "***"
+        assert redacted["langfuse_public_key"] == "***"
         assert redacted["normal_field"] == "ok"

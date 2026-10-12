@@ -15,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from app.api.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
 from app.api.v1.router import api_v1_router
 from app.api.v1.routes.health import router as health_router
+from app.core import tracing
 from app.core.config import get_settings
 from app.core.cost_tracking import TokenUsageCallbackHandler
 from app.core.logging import configure_logging, get_logger
@@ -29,7 +30,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level, settings.environment)
-    settings.configure_langsmith_env()
+    tracing.init_tracing(settings)
 
     checkpoint_path = Path(settings.checkpoint_db_path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         yield
 
+        tracing.shutdown()
     logger.info("Application shutdown complete")
 
 

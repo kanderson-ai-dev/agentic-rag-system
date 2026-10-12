@@ -10,6 +10,9 @@ import os
 # Disable LangSmith tracing for the test suite (no network calls, no noisy teardown).
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 os.environ["LANGSMITH_TRACING"] = "false"
+# Tests must never reach a tracing backend — provider env vars beat .env, so
+# this keeps the suite offline even when the developer .env selects one.
+os.environ["TRACING_PROVIDER"] = "none"
 
 import re  # noqa: E402
 from typing import Any  # noqa: E402

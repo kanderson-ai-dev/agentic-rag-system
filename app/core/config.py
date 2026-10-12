@@ -7,6 +7,7 @@ evaluation scripts.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -80,6 +81,12 @@ class Settings(BaseSettings):
     # --- Checkpointing (required for human-in-the-loop interrupts) ---
     checkpoint_db_path: str = "data/checkpoints.sqlite"
 
+    # --- Tracing provider (single switch for observability backends) ---
+    # `none` for daily development and offline tests, `langsmith` for the
+    # default EDD provider, `langfuse` for the conditional fallback when
+    # LangSmith is unusable (quota, missing/invalid key).
+    tracing_provider: Literal["none", "langsmith", "langfuse"] = "none"
+
     # --- LangSmith observability / evaluation-driven development ---
     langchain_tracing_v2: bool = False
     langchain_project: str = "agentic-rag-system"
@@ -89,6 +96,13 @@ class Settings(BaseSettings):
         default=None, validation_alias="LANGCHAIN_API_KEY"
     )
 
+    # --- Langfuse observability (fallback provider) ---
+    # Cloud base URL by default; a self-hosted deployment only changes
+    # `LANGFUSE_BASE_URL` (e.g. http://localhost:3001).
+    langfuse_public_key: SecretStr | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+
     @field_validator(
         "openai_api_key",
         "langsmith_api_key",
@@ -96,6 +110,8 @@ class Settings(BaseSettings):
         "neo4j_password",
         "jwt_secret_key",
         "auth_password_hash",
+        "langfuse_public_key",
+        "langfuse_secret_key",
         mode="before",
     )
     @classmethod
@@ -127,14 +143,31 @@ class Settings(BaseSettings):
         """Return the bcrypt password hash, or `None` if not configured."""
         return self.auth_password_hash.get_secret_value() if self.auth_password_hash else None
 
+    def langfuse_public_key_value(self) -> str | None:
+        """Return the plaintext Langfuse public key, or `None` if not configured."""
+        return self.langfuse_public_key.get_secret_value() if self.langfuse_public_key else None
+
+    def langfuse_secret_key_value(self) -> str | None:
+        """Return the plaintext Langfuse secret key, or `None` if not configured."""
+        return self.langfuse_secret_key.get_secret_value() if self.langfuse_secret_key else None
+
     def configure_langsmith_env(self) -> None:
-        """Propagate LangSmith settings to the environment variables that
-        LangChain/LangGraph read implicitly for tracing.
+        """Propagate the implicit LangChain tracing env vars for the provider.
+
+        LangSmith env tracing is only exported when ``tracing_provider`` is
+        ``"langsmith"`` *and* ``langchain_tracing_v2`` is true. For ``none``
+        and ``langfuse`` the flags are forced off so a stale
+        ``LANGCHAIN_TRACING_V2=true`` can never double-trace a request or
+        silently burn the (quota-limited) LangSmith budget alongside another
+        provider.
         """
         import os
 
-        if self.langchain_tracing_v2:
-            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        enabled = self.tracing_provider == "langsmith" and self.langchain_tracing_v2
+        flag = "true" if enabled else "false"
+        os.environ["LANGCHAIN_TRACING_V2"] = flag
+        os.environ["LANGSMITH_TRACING"] = flag
+        if enabled:
             os.environ["LANGCHAIN_PROJECT"] = self.langchain_project
             os.environ["LANGCHAIN_ENDPOINT"] = self.langchain_endpoint
             if self.langsmith_api_key:

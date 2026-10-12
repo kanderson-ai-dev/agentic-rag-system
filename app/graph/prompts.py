@@ -15,6 +15,7 @@ version of each prompt from the versioned YAML artifacts under ``prompts/``.
   the ``agent_prompt_active_version`` gauge.
 """
 
+import hashlib
 import threading
 from pathlib import Path
 from typing import Any, cast
@@ -99,6 +100,20 @@ def get_prompt(
 def get_system_text(name: PromptName | str, version: int | None = None) -> str:
     """Return just the system text of a stored prompt version."""
     return get_registry().get(name, _resolve_version(name, version)).system
+
+
+def prompt_hash(name: PromptName | str, version: int | None = None) -> str | None:
+    """Short content hash of the effective prompt version (trace metadata).
+
+    ``None`` when the registry or version can't be resolved — stub registries
+    in tests need no hash support.
+    """
+    try:
+        prompt = get_registry().get(name, _resolve_version(name, version))
+    except Exception:  # noqa: BLE001 - trace metadata must never break a call
+        return None
+    payload = f"{name}:{prompt.version}:{prompt.system}:{prompt.human}"
+    return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
 def active_versions() -> dict[str, int]:

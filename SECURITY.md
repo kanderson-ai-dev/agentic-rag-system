@@ -31,7 +31,7 @@ checklist for closing out each phase.
 | LLM03 Training Data Poisoning | Model not re-trained; prompt artifact integrity via hash-chained audit log on every registry mutation | `app/services/prompt_registry.py` |
 | LLM04 Model DoS | Input length limit, bounded `top_k` | `app/graph/guardrails.py`, `app/services/vector_store.py` |
 | LLM05 Supply Chain Vulnerabilities | `pip-audit`, pinned versions | CI |
-| LLM06 Sensitive Information Disclosure | Log redaction, `usage_store` without conversation content | `app/core/logging.py`, `app/services/usage_store.py` |
+| LLM06 Sensitive Information Disclosure | Log redaction, `usage_store` without conversation content, tracing payload mask (secret-looking keys redacted, strings truncated) | `app/core/logging.py`, `app/services/usage_store.py`, `app/core/tracing.py` |
 | LLM07 Insecure Plugin Design | Parameterized Cypher, explicit input validation; prompt-leak protection — promotions require metric evidence, prompt bodies excluded from list views | `app/services/graph_store.py`, `app/api/v1/routes/prompts.py` |
 | LLM08 Excessive Agency | HITL before accepting low-confidence answers | `app/graph/nodes.py` |
 | LLM09 Overreliance | LLM-as-judge + real evaluation | `evaluation/` |

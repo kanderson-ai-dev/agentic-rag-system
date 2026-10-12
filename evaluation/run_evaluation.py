@@ -1,9 +1,18 @@
-"""Run a LangSmith experiment against the compiled graph (LLM-as-judge).
+"""Run a provider-backed experiment against the compiled graph (LLM-as-judge).
 
-Uses `langsmith.evaluate()` to produce a versioned Experiment in the LangSmith
-dashboard — dataset ``agentic-rag-system-eval-v<dataset_version>``, experiment
-prefix carrying the prompt versions that ran — and falls back to the local
-harness scorecard when LangSmith is unavailable.
+The provider is selected by ``TRACING_PROVIDER``:
+
+- ``langsmith`` — `langsmith.evaluate()` produces a versioned Experiment in
+  the LangSmith dashboard (dataset
+  ``agentic-rag-system-eval-v<dataset_version>``, experiment prefix carrying
+  the prompt versions that ran).
+- ``langfuse`` — the same versioned dataset and one trace per item land in
+  Langfuse via ``dataset.run_experiment()`` with evaluator scores attached.
+- ``none`` — local harness scorecard only (default for daily development).
+
+Every provider path falls back to the local harness scorecard when its
+backend is unavailable — the local scorecard stays the promotion-gate
+source of truth either way.
 
 CLI flags mirror `run_ragas.py`: ``--prompt-version NAME=N`` (repeatable),
 ``--retrieval-mode``, ``--max-cost-usd``, ``--output``.
@@ -12,15 +21,17 @@ CLI flags mirror `run_ragas.py`: ``--prompt-version NAME=N`` (repeatable),
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
 from langgraph.checkpoint.memory import InMemorySaver
 
+from app.core import tracing
 from app.core.config import get_settings
-from app.core.cost_tracking import TokenUsageCallbackHandler
+from app.core.cost_tracking import TokenUsageCallbackHandler, calculate_cost_usd
 from app.graph.graph import build_default_graph, initial_state
-from app.graph.prompts import pin_versions
+from app.graph.prompts import REFUSAL_TEXT, active_versions, pin_versions
 from evaluation import evaluators
 from evaluation.dataset import build_dataset, dataset_version
 from evaluation.evaluators import (
@@ -32,6 +43,7 @@ from evaluation.evaluators import (
 )
 from evaluation.harness import (
     CostCapExceeded,
+    git_sha,
     parse_prompt_version_overrides,
     prompt_version_tag,
     run_cases,
@@ -228,9 +240,6 @@ def try_langsmith_evaluation(
                     dataset_id=dataset.id,
                 )
 
-        from app.core.cost_tracking import calculate_cost_usd
-        from app.graph.prompts import active_versions
-
         tag = prompt_version_tag(active_versions())
 
         # Build the target over the handler-wired graph so spend is measured;
@@ -272,6 +281,162 @@ def try_langsmith_evaluation(
         return None
     except Exception as e:
         print(f"LangSmith evaluate() failed: {e}. Running local evaluation instead.")
+        return run_local_evaluation(
+            prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
+        )
+    finally:
+        pin_versions(None)
+        evaluators.set_token_handler(None)
+
+
+def _get_or_create_langfuse_dataset(client: object, name: str) -> object:
+    """Fetch the Langfuse dataset, creating it (with items) on first use."""
+    try:
+        return client.get_dataset(name)
+    except Exception:  # noqa: BLE001 - any lookup miss falls through to create
+        pass
+
+    client.create_dataset(
+        name=name,
+        description="Unified Agentic RAG eval set (single-hop, multi-hop, "
+        "out-of-domain, injection, other-language, vague).",
+    )
+    for case in build_dataset():
+        client.create_dataset_item(
+            dataset_name=name,
+            input={"question": case["question"]},
+            expected_output=case["ground_truth"],
+            metadata={
+                "id": case["id"],
+                "category": case["category"],
+                "expected_behavior": case["expected_behavior"],
+            },
+        )
+    return client.get_dataset(name)
+
+
+def _langfuse_evaluations(
+    input: dict,  # noqa: A002 - Langfuse evaluator contract names it `input`
+    output: dict,
+    expected_output: object,
+    metadata: dict | None,
+) -> list[dict]:
+    """Item-level evaluator for ``dataset.run_experiment()``.
+
+    Mirrors the LangSmith evaluator set: quality metrics on ``answer`` cases
+    plus the behavior check on every case, returned as Langfuse scores.
+    """
+    expected = (metadata or {}).get("expected_behavior", "answer")
+    question = (input or {}).get("question", "")
+    output = output or {}
+    answer = output.get("answer", "")
+    context = "\n\n".join(output.get("contexts", []))
+    blocked = bool(output.get("blocked"))
+    escalated = bool(output.get("escalated"))
+
+    evaluations: list[dict] = []
+    if expected == "answer":
+        for name, scorer in evaluators.default_scorers().items():
+            evaluations.append(
+                {
+                    "name": name,
+                    "value": scorer(question=question, answer=answer, context=context),
+                }
+            )
+
+    if expected == "block_injection":
+        ok = blocked
+    elif expected == "refuse_out_of_domain":
+        ok = blocked or escalated or REFUSAL_TEXT in answer
+    else:
+        ok = not blocked
+    evaluations.append({"name": "expected_behavior", "value": 1.0 if ok else 0.0})
+    return evaluations
+
+
+def try_langfuse_evaluation(
+    *,
+    prompt_versions: dict[str, int] | None = None,
+    max_cost_usd: float | None = None,
+) -> dict | None:
+    """Run a real Langfuse experiment, falling back to local when unavailable.
+
+    ``dataset.run_experiment`` creates the dataset run, one trace per item
+    and evaluator scores natively; the local scorecard remains the
+    promotion-gate source of truth and is produced by the fallback path or
+    by `run_ragas.py`.
+    """
+    settings = get_settings()
+    if tracing.init_tracing(settings) != "langfuse":
+        print("Langfuse unavailable or misconfigured. Running local evaluation.")
+        return run_local_evaluation(
+            prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
+        )
+
+    try:
+        import langfuse
+
+        client = langfuse.get_client()
+    except Exception as e:
+        print(f"Langfuse client unavailable ({e}). Running local evaluation.")
+        return run_local_evaluation(
+            prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
+        )
+
+    pin_versions(prompt_versions)
+    token_handler = TokenUsageCallbackHandler()
+    evaluators.set_token_handler(token_handler)
+    try:
+        dataset = _get_or_create_langfuse_dataset(client, dataset_name())
+        graph = _graph(token_handler)
+        tag = prompt_version_tag(active_versions())
+
+        def task(*, item: object, **kwargs: object) -> dict:
+            result = graph.invoke(
+                initial_state(item.input["question"]),
+                config={
+                    "configurable": {"thread_id": f"eval-{item.id}"},
+                    "callbacks": tracing.build_callbacks(settings),
+                },
+            )
+            return {
+                "answer": result.get("generation", ""),
+                "contexts": [
+                    doc.page_content for doc in result.get("documents", [])
+                ],
+                "blocked": bool(result.get("blocked", False)),
+                "escalated": bool(result.get("__interrupt__")),
+            }
+
+        def evaluator(
+            *, input: dict, output: dict, expected_output: object, metadata: dict, **kwargs: object
+        ) -> list[dict]:
+            return _langfuse_evaluations(input, output, expected_output, metadata)
+
+        result = dataset.run_experiment(
+            # `<prompt_versions>-<git sha>-<date>` so A/B runs compare side by side
+            name=f"{tag}-{git_sha()}-{datetime.now(UTC):%Y-%m-%d}",
+            task=task,
+            evaluators=[evaluator],
+            max_concurrency=2,
+            metadata={
+                "prompt_versions": tag,
+                "dataset_version": dataset_version(),
+            },
+        )
+        spent = calculate_cost_usd(
+            token_handler.prompt_tokens,
+            token_handler.completion_tokens,
+            settings.cost_input_price_per_1m,
+            settings.cost_output_price_per_1m,
+        )
+        if max_cost_usd is not None and spent > max_cost_usd:
+            print(f"WARNING: run spent ${spent:.4f} > cap ${max_cost_usd:.4f}")
+        tracing.flush()
+        print(f"Langfuse experiment complete: {result.name}")
+        return None
+    except Exception as e:
+        print(f"Langfuse experiment failed: {e}. Running local evaluation instead.")
         return run_local_evaluation(
             prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
         )
@@ -325,11 +490,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    print("Running LLM-as-judge evaluation...")
+    provider = get_settings().tracing_provider
+    print(f"Running LLM-as-judge evaluation (provider={provider})...")
     try:
-        result = try_langsmith_evaluation(
-            prompt_versions=pins or None, max_cost_usd=args.max_cost_usd
-        )
+        if provider == "langfuse":
+            result = try_langfuse_evaluation(
+                prompt_versions=pins or None, max_cost_usd=args.max_cost_usd
+            )
+        elif provider == "langsmith":
+            result = try_langsmith_evaluation(
+                prompt_versions=pins or None, max_cost_usd=args.max_cost_usd
+            )
+        else:
+            result = run_local_evaluation(
+                prompt_versions=pins or None, max_cost_usd=args.max_cost_usd
+            )
     except CostCapExceeded as exc:
         print(f"aborted: {exc}", file=sys.stderr)
         return 3

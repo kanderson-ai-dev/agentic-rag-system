@@ -16,9 +16,35 @@ One dataset, one harness, two runners.
 | `expected_behavior` | `answer`, `refuse_out_of_domain`, or `block_injection` |
 
 `dataset_version()` is a short SHA-256 over the canonical case list — it feeds
-the LangSmith dataset name (`agentic-rag-system-eval-v<hash>`) and is stamped
-on every scorecard, so a scorecard can never be silently compared against a
-different question set.
+the dataset name (`agentic-rag-system-eval-v<hash>`, identical in LangSmith
+and Langfuse) and is stamped on every scorecard, so a scorecard can never be
+silently compared against a different question set.
+
+## Tracing provider (`TRACING_PROVIDER`)
+
+`run_evaluation.py` dispatches on `TRACING_PROVIDER`:
+
+| value | behavior |
+|---|---|
+| `none` (default) | local harness scorecard only — daily development, CI, offline work |
+| `langsmith` | real LangSmith Experiment via `evaluate()` (dataset + per-run evaluators) |
+| `langfuse` | real Langfuse experiment via `dataset.run_experiment()` (dataset run + one trace per item + evaluator scores) |
+
+Both provider paths fall back to the local scorecard when their backend is
+missing keys or unreachable — **the local scorecard is always the
+promotion-gate source of truth**; provider dashboards are evidence, not the
+gate. The `run_ragas.py` harness never emits traces on purpose: it produces
+the scorecard numbers, while `run_evaluation.py` produces the per-item
+experiment traces.
+
+Langfuse is the conditional fallback for when LangSmith is unusable (401/403
+key problems or HTTP 429 monthly-trace-quota exhaustion — the latter hit in
+practice, which is why this integration exists). With the provider selected,
+every API request is traced too — `X-Trace-Id` response header included —
+so flip it on only for deliberate evidence runs, then set it back to `none`.
+For self-hosted Langfuse, only `LANGFUSE_BASE_URL` changes (e.g.
+`http://localhost:3001`); the same code path produces local evidence with
+unlimited trace budget.
 
 ## How non-answer cases are scored
 
@@ -64,7 +90,7 @@ retrieval-mode comparison reads.
 ## Files
 
 - `run_ragas.py` — local scorecard + `results/history/` + `TREND.md`
-- `run_evaluation.py` — LangSmith `evaluate()` experiment (local scorecard fallback)
+- `run_evaluation.py` — provider experiment: LangSmith `evaluate()` or Langfuse `run_experiment()` per `TRACING_PROVIDER` (local scorecard fallback)
 - `harness.py` — shared case runner / scorer / provenance
 - `evaluators.py` — the LLM-judged metric functions
 - `results/` — scorecards, history, A/B results (`ab/`)

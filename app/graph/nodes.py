@@ -21,7 +21,7 @@ from app.core.metrics import (
     timed_node,
 )
 from app.graph.guardrails import detect_prompt_injection, sanitize_input, screen_output
-from app.graph.prompts import active_versions
+from app.graph.prompts import active_versions, prompt_hash
 from app.graph.state import GraphState
 
 logger = get_logger(__name__)
@@ -41,11 +41,16 @@ def _llm_config(prompt_name: str, versions: dict[str, int]) -> dict[str, Any]:
     Propagates as LangSmith run metadata/tags (which prompt produced the
     output is always known) without changing the prompt variables.
     """
+    metadata: dict[str, Any] = {
+        "prompt_versions": versions,
+        "prompt_version": versions.get(prompt_name),
+        "stage": prompt_name,
+    }
+    content_hash = prompt_hash(prompt_name, versions.get(prompt_name))
+    if content_hash:
+        metadata["prompt_hash"] = content_hash
     return {
-        "metadata": {
-            "prompt_versions": versions,
-            "prompt_version": versions.get(prompt_name),
-        },
+        "metadata": metadata,
         "tags": [f"prompt:{prompt_name}@{versions.get(prompt_name) or 'promoted'}"],
     }
 

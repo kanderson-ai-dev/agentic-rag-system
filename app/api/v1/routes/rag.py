@@ -4,10 +4,11 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from langgraph.graph.state import CompiledStateGraph
 
 from app.api.v1.schemas import QueryRequest, QueryResponse
+from app.core import tracing
 from app.core.config import get_settings
 from app.core.cost_tracking import calculate_cost_usd
 from app.core.dependencies import get_graph, get_session_id, verify_jwt
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 def query(
     payload: QueryRequest,
     request: Request,
+    response: Response,
     graph: CompiledStateGraph[Any, None, Any, Any] = Depends(get_graph),
     _: dict[str, Any] | None = Depends(verify_jwt),
     session_id: str | None = Depends(get_session_id),
@@ -37,17 +39,30 @@ def query(
     """
     start = time.perf_counter()  # whole request, not just the graph call
     thread_id = payload.thread_id or str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    settings = get_settings()
 
     token_handler = getattr(request.app.state, "token_handler", None)
     if token_handler is not None:
         token_handler.prompt_tokens = 0
         token_handler.completion_tokens = 0
 
-    result = graph.invoke(initial_state(payload.question), config=config)
+    with tracing.trace_run(
+        settings,
+        name="rag.query",
+        session_id=session_id,
+        metadata={"thread_id": thread_id},
+        tags=["api", "rag"],
+    ) as trace_id:
+        result = graph.invoke(
+            initial_state(payload.question),
+            config={
+                "configurable": {"thread_id": thread_id},
+                "callbacks": tracing.build_callbacks(settings),
+            },
+        )
+    if trace_id:
+        response.headers["X-Trace-Id"] = trace_id
     latency_ms = int((time.perf_counter() - start) * 1000)
-
-    settings = get_settings()
     prompt_tokens = token_handler.prompt_tokens if token_handler else 0
     completion_tokens = token_handler.completion_tokens if token_handler else 0
     cost_usd = calculate_cost_usd(

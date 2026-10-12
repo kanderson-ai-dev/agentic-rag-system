@@ -269,8 +269,10 @@ needed), `http://localhost:8000/console` for the operator console, or
 |---|---|---|---|
 | `OPENAI_API_KEY` | yes | ✅ | LLM + embeddings |
 | `CHAT_MODEL_NAME` | no | — | default `gpt-4o-mini` |
-| `LANGCHAIN_TRACING_V2` | no | — | enable LangSmith tracing |
+| `TRACING_PROVIDER` | no | — | `none` (default), `langsmith` or `langfuse` — see Observability |
+| `LANGCHAIN_TRACING_V2` | no | — | enable LangSmith tracing (provider `langsmith` only) |
 | `LANGCHAIN_API_KEY` | no | ✅ | LangSmith observability |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` | no | ✅ | Langfuse observability (provider `langfuse`) |
 | `PINECONE_API_KEY` | no | ✅ | vector store (else Chroma local) |
 | `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | no | ✅ | graph store (else NetworkX local) |
 | `JWT_SECRET_KEY` | no | ✅ | enable API-level auth (else open quickstart; frontend has no login) |
@@ -338,6 +340,35 @@ cost/latency is stored in the usage store. Live aggregates:
 |---|---|
 | p50 end-to-end latency | ≤ 3 s (excluding HITL pauses) |
 | p95 end-to-end latency | ≤ 6 s |
+
+## 🔭 Tracing & Evaluation Observability
+
+`TRACING_PROVIDER` selects the observability backend — **opt-in, never
+default**. With a provider active, every request (including dev/manual
+traffic) is traced, so flip it on only for deliberate evidence/evaluation
+runs and set it back to `none` for daily work.
+
+| `TRACING_PROVIDER` | What happens |
+|---|---|
+| `none` (default) | No tracing — offline tests and daily development |
+| `langsmith` | LangSmith env tracing + `langsmith.evaluate()` experiments. Requires `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` |
+| `langfuse` | Langfuse traces (fresh `CallbackHandler` per request) + `dataset.run_experiment()` experiments. Requires the three `LANGFUSE_*` vars |
+
+Why Langfuse exists in this repo: LangSmith's monthly unique-trace quota is
+limited and this project hit it (HTTP 429 on ingestion). Langfuse — open
+source, equivalent trace/dataset/score model — is the equivalent fallback;
+the same `X-Trace-Id` header, prompt-version metadata and per-item
+experiment scores work identically. Provider failures never change an HTTP
+response: a down or unkeyed backend degrades to no tracing. For zero-quota
+self-hosting see `docker-compose.langfuse.yml` — only `LANGFUSE_BASE_URL`
+changes (`http://localhost:3001`).
+
+Trace privacy: span payloads are masked at the client — secret-looking keys
+redacted, system-prompt template text replaced, strings bounded at 500
+chars. Prompt attribution travels as `prompt_version` + `prompt_hash`
+metadata, never template text. User input and model output still leave the
+process for the configured Langfuse region — same as any hosted tracing
+backend.
 
 ## Docker Deployment
 
