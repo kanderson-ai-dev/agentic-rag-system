@@ -103,13 +103,12 @@ def performance(
     block/escalation rates and per-prompt-version aggregates — plus the
     Human-vs-Agent comparison with its assumptions echoed back.
     """
-    perf = _get_usage_store(request).performance(session_id=session_id)
+    store = _get_usage_store(request)
+    perf = store.performance(session_id=session_id)
     perf["human_vs_agent"] = _human_vs_agent(perf, settings)
-    # The daily budget gate lands in a later phase; the field is echoed when
-    # configured so the panel can already render the slot.
-    perf["budget"] = {
-        "daily_limit_usd": getattr(settings, "daily_budget_usd", None)
-    }
+    # The daily budget protects the deployment's wallet, not one session —
+    # deliberately global even though the rest of the payload is scoped.
+    perf["budget"] = store.budget_status(settings.daily_budget_usd)
     return perf
 
 

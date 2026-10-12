@@ -6,6 +6,7 @@ graph execution is involved.
 
 from app.graph.edges import (
     make_decide_to_generate,
+    route_after_budget_gate,
     route_after_guardrail,
     route_after_human_review,
 )
@@ -27,11 +28,22 @@ def _state(**overrides):
 
 
 class TestRouteAfterGuardrail:
-    def test_routes_to_retrieve_when_not_blocked(self) -> None:
-        assert route_after_guardrail(_state(blocked=False)) == "retrieve"
+    def test_routes_to_budget_gate_when_not_blocked(self) -> None:
+        assert route_after_guardrail(_state(blocked=False)) == "budget_gate"
 
     def test_routes_to_error_output_when_blocked(self) -> None:
         assert route_after_guardrail(_state(blocked=True)) == "error_output"
+
+
+class TestRouteAfterBudgetGate:
+    def test_routes_to_retrieve_under_budget(self) -> None:
+        assert route_after_budget_gate(_state(budget_exhausted=False)) == "retrieve"
+
+    def test_routes_to_end_when_exhausted(self) -> None:
+        assert route_after_budget_gate(_state(budget_exhausted=True)) == "end"
+
+    def test_missing_flag_defaults_to_retrieve(self) -> None:
+        assert route_after_budget_gate(_state()) == "retrieve"
 
 
 class TestDecideToGenerate:

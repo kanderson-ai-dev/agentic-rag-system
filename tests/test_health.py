@@ -50,7 +50,13 @@ def test_health_reports_ok_when_no_backend_failures() -> None:
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "backends": {}, "failing_backends": []}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["backends"] == {}
+    assert body["failing_backends"] == []
+    # The lifespan wires a real usage store, so the budget block is present.
+    assert "daily_limit_usd" in body["budget"]
+    assert "exhausted" in body["budget"]
 
 
 def test_health_reports_degraded_after_backend_failure() -> None:

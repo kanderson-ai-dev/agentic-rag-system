@@ -12,21 +12,27 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-def health() -> dict[str, Any]:
+def health(request: Request) -> dict[str, Any]:
     """Aggregated service health, always HTTP 200.
 
     Reports ``degraded`` (instead of ``ok``) when the last request-path call
     to a retrieval backend failed, so operators can spot a paused Neo4j Aura
     instance or an unreachable Pinecone index without the failure ever
-    breaking the request path itself.
+    breaking the request path itself. Also reports the daily-budget position
+    — a spent budget is a product gate, not a malfunction, so it never
+    degrades ``status``.
     """
     backends = backend_health()
     failing = sorted(name for name, ok in backends.items() if not ok)
-    return {
+    payload: dict[str, Any] = {
         "status": "degraded" if failing else "ok",
         "backends": backends,
         "failing_backends": failing,
     }
+    store = getattr(request.app.state, "usage_store", None)
+    if store is not None:
+        payload["budget"] = store.budget_status(get_settings().daily_budget_usd)
+    return payload
 
 
 @router.get("/health/live")

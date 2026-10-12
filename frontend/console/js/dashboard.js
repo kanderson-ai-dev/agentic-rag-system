@@ -161,6 +161,49 @@ function perfCard(value, label, band) {
   return stat;
 }
 
+// Daily-budget usage bar. Unlike the rest of the panel this is global
+// telemetry (the budget protects the deployment's wallet), so it renders
+// even for a fresh session with zero requests. Colour is a band, never the
+// only signal — the status is always spelled out in text.
+function renderBudget(budget) {
+  const box = $("#perf-budget");
+  box.replaceChildren();
+  if (!budget || budget.daily_limit_usd == null) return;
+
+  const pct = Math.min(100, budget.used_pct ?? 0);
+  const band = budget.exhausted
+    ? { cls: "fail", label: "exhausted — new queries are declined until tomorrow" }
+    : budget.warning
+      ? { cls: "warn", label: "above 80% — nearing the daily cap" }
+      : { cls: "pass", label: "on track" };
+
+  const head = document.createElement("div");
+  head.className = "perf-budget-head";
+  const name = document.createElement("span");
+  name.textContent = "Daily budget";
+  const detail = document.createElement("span");
+  detail.className = "muted small";
+  detail.textContent =
+    `${formatUsd(budget.spent_today_usd ?? 0)} / ` +
+    `${formatUsd(budget.daily_limit_usd)} · ${(budget.used_pct ?? 0).toFixed(0)}% — ` +
+    band.label;
+  head.append(name, detail);
+
+  const track = document.createElement("div");
+  track.className = "perf-bar-track";
+  track.setAttribute("role", "progressbar");
+  track.setAttribute("aria-label", "Daily budget used");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "100");
+  track.setAttribute("aria-valuenow", String(Math.round(pct)));
+  const fill = document.createElement("div");
+  fill.className = `perf-bar perf-budget-fill ${band.cls}`;
+  fill.style.width = `${Math.max(pct > 0 ? 2 : 0, pct)}%`;
+  track.appendChild(fill);
+
+  box.append(head, track);
+}
+
 function renderPerformance(perf) {
   const cards = $("#perf-cards");
   const nodes = $("#perf-nodes");
@@ -170,6 +213,7 @@ function renderPerformance(perf) {
   nodes.replaceChildren();
   hva.replaceChildren();
   versionsBody.replaceChildren();
+  renderBudget(perf?.budget);
 
   const empty = !perf || !perf.requests;
   $("#perf-empty").hidden = !empty;
@@ -595,6 +639,7 @@ async function refreshDashboard() {
     // unavailable.
     $("#summary").replaceChildren();
     $("#perf-cards").replaceChildren();
+    $("#perf-budget").replaceChildren();
     $("#perf-nodes").replaceChildren();
     $("#perf-empty").hidden = false;
     $("#perf-nodes-empty").hidden = false;

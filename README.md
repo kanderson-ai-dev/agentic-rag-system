@@ -129,7 +129,7 @@ expected_behavior 1.00, llm_as_judge 4.90:
 ![Langfuse — experiment per-item evaluator scores](docs/screenshots/langfuse-experiment-scores.png)
 
 Every item is a real end-to-end trace: the span tree shows the Self-RAG
-pipeline (guardrail → hybrid retrieve → grade → generate → output guardrail)
+pipeline (guardrail → budget gate → hybrid retrieve → grade → generate → output guardrail)
 with per-node latency and token cost:
 
 ![Langfuse — single-item trace tree](docs/screenshots/langfuse-trace-tree.png)
@@ -193,7 +193,9 @@ against hallucination.
 graph TD
     START[START] --> guardrail[guardrail]
     guardrail -- blocked --> error_output[error_output] --> END[END]
-    guardrail -- safe --> retrieve[hybrid retrieve]
+    guardrail -- safe --> budget_gate[budget_gate]
+    budget_gate -- exhausted --> END
+    budget_gate -- ok --> retrieve[hybrid retrieve]
     retrieve --> grade[grade_documents]
     grade -- enough docs --> generate[generate]
     grade -- retry available --> transform[transform_query] --> retrieve
@@ -237,6 +239,10 @@ graph TD
   (OWASP LLM01/LLM02).
 - **JWT authentication (API-level, optional)** — single-user login with bcrypt +
   rate-limited `/auth/login`, off by default (open quickstart).
+- **Abuse & spend protection** — per-IP rate limiting on the request path
+  (429 + `Retry-After`), plus a deterministic daily LLM budget enforced
+  in-graph after the free input guardrail; `/health` and the console show the
+  live budget position.
 - **Cost tracking & latency** — per-node Prometheus metrics + SQLite usage
   store.
 - **Evaluation (EDD)** — RAGAS-style scorecards versioned in git with strict
@@ -456,7 +462,8 @@ curl -s -X POST http://localhost:8000/api/v1/rag/query \
 See [`SECURITY.md`](SECURITY.md) for the full OWASP Top 10 and OWASP LLM Top 10
 mapping. Highlights: guardrail-first input handling, parameterized Cypher,
 `SecretStr` config, secret-redacting logs, a strict CSP (`script-src 'self'` +
-the Tailwind CDN origin only), and CI that uses `pull_request` (never
+the Tailwind CDN origin only), per-IP rate limiting on the request path, a
+daily LLM budget gate, and CI that uses `pull_request` (never
 `pull_request_target`) so external forks cannot read repository secrets.
 
 ## Known Limitations & Next Steps
@@ -467,8 +474,6 @@ the Tailwind CDN origin only), and CI that uses `pull_request` (never
   can exceed the documented p95 latency.
 - Single-user authentication (no multi-tenant admin).
 - SQLite checkpoints/usage are not migrated to Postgres.
-- Rate limiting is applied to `/auth/login` only (general API rate limiting is
-  a documented future improvement).
 
 ## 💼 Need this for your own project?
 

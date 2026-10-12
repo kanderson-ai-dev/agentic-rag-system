@@ -4,25 +4,32 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from langgraph.graph.state import CompiledStateGraph
 
 from app.api.v1.schemas import QueryRequest, QueryResponse
 from app.core import tracing
 from app.core.config import get_settings
 from app.core.cost_tracking import calculate_cost_usd
-from app.core.dependencies import get_graph, get_session_id, verify_jwt
+from app.core.dependencies import (
+    BUDGET_EXCEEDED_DETAIL,
+    get_graph,
+    get_session_id,
+    verify_jwt,
+)
 from app.core.metrics import (
     agent_blocked_requests_total,
     agent_human_review_total,
     agent_llm_cost_usd_total,
 )
+from app.core.rate_limit import limiter, request_rate_limit
 from app.graph.graph import initial_state
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 
 
 @router.post("/query", response_model=QueryResponse)
+@limiter.limit(request_rate_limit)
 def query(
     payload: QueryRequest,
     request: Request,
@@ -94,5 +101,8 @@ def query(
         agent_human_review_total.inc()
     if cost_usd > 0:
         agent_llm_cost_usd_total.inc(cost_usd)
+
+    if result.get("budget_exhausted"):
+        raise HTTPException(status_code=429, detail=BUDGET_EXCEEDED_DETAIL)
 
     return QueryResponse.from_graph_result(result, thread_id)

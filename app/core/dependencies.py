@@ -106,6 +106,24 @@ def get_prompt_registry() -> PromptRegistry:
     return get_registry()
 
 
+# Friendly, non-technical detail for the daily-budget 429. Deliberately free
+# of numbers/internals — the message is user-facing on the public landing.
+BUDGET_EXCEEDED_DETAIL = "Daily demo budget reached — try again tomorrow."
+
+
+def enforce_daily_budget(request: Request) -> None:
+    """Raise HTTP 429 when the recorded UTC-day spend hits the daily cap.
+
+    Used on paths that re-enter the graph *past* the in-graph budget gate —
+    the human-review resume skips the guardrail/budget_gate pair, so the
+    check runs at the endpoint instead, still before any LLM call.
+    """
+    settings = get_settings()
+    store = getattr(request.app.state, "usage_store", None)
+    if store is not None and store.daily_spend_usd() >= settings.daily_budget_usd:
+        raise HTTPException(status_code=429, detail=BUDGET_EXCEEDED_DETAIL)
+
+
 def get_ab_test_manager() -> AbTestJobManager:
     """Return the process-wide single-flight A/B job manager."""
     global _ab_test_manager

@@ -177,19 +177,23 @@ function setBusy(busy) {
 }
 
 // Render an error bubble with a "Retry" button wired to re-run the action.
+// `retry` may be null — a 429 without `Retry-After` means the daily budget
+// is spent, and a Retry button that can only fail again is worse than none.
 function addErrorWithRetry(text, retry) {
   const el = createMessage("system");
   el.classList.add("error");
   el.textContent = text;
-  const retryBtn = document.createElement("button");
-  retryBtn.type = "button";
-  retryBtn.className = "btn secondary retry-btn";
-  retryBtn.textContent = "Retry";
-  retryBtn.addEventListener("click", () => {
-    el.remove();
-    retry();
-  });
-  el.appendChild(retryBtn);
+  if (retry) {
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "btn secondary retry-btn";
+    retryBtn.textContent = "Retry";
+    retryBtn.addEventListener("click", () => {
+      el.remove();
+      retry();
+    });
+    el.appendChild(retryBtn);
+  }
   $("#messages").appendChild(el);
   smartScroll();
 }
@@ -225,9 +229,18 @@ async function sendQuestion(question) {
     }
   } catch (error) {
     hideTyping();
-    addErrorWithRetry(`Something went wrong: ${error.message}`, () =>
-      sendQuestion(question)
-    );
+    // 429s carry friendly server copy already ("Daily demo budget reached…",
+    // "Rate limit exceeded…") — show it verbatim instead of a raw wrapper.
+    if (error.status === 429) {
+      addErrorWithRetry(
+        error.message,
+        error.retryAfter ? () => sendQuestion(question) : null
+      );
+    } else {
+      addErrorWithRetry(`Something went wrong: ${error.message}`, () =>
+        sendQuestion(question)
+      );
+    }
   } finally {
     setBusy(false);
   }

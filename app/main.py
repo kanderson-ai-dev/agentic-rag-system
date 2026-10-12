@@ -1,15 +1,15 @@
 """FastAPI application entrypoint."""
 
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite import SqliteSaver
 from prometheus_fastapi_instrumentator import Instrumentator
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
@@ -42,7 +42,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     with SqliteSaver.from_conn_string(str(checkpoint_path)) as checkpointer:
         try:
-            app.state.graph = build_default_graph(settings, checkpointer, app.state.token_handler)
+            app.state.graph = build_default_graph(
+                settings,
+                checkpointer,
+                app.state.token_handler,
+                app.state.usage_store,
+            )
             logger.info("Self-RAG graph initialized successfully")
         except Exception as exc:  # noqa: BLE001 - degrade gracefully, don't crash startup
             app.state.graph_error = str(exc)
@@ -54,6 +59,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Application shutdown complete")
 
 
+async def rate_limit_exceeded_handler(
+    request: Request, exc: RateLimitExceeded
+) -> Response:
+    """429 with a generic body plus `Retry-After`/`X-RateLimit-*` headers.
+
+    The default handler leaks the internal limit string in an ``error`` key;
+    this one returns a ``detail`` field (the shape every other API error
+    uses). slowapi's ``headers_enabled`` can't be used — it injects headers
+    into endpoint return values, which are pydantic models here, not
+    Responses — so the headers are computed from the hit's own window stats
+    exactly as ``_inject_headers`` does internally.
+    """
+    response = JSONResponse(
+        {"detail": "Rate limit exceeded — please wait and try again."},
+        status_code=429,
+    )
+    limit_info = getattr(request.state, "view_rate_limit", None)
+    if limit_info:
+        rate_item, keys = limit_info
+        reset_at, remaining = limiter.limiter.get_window_stats(rate_item, *keys)
+        response.headers["X-RateLimit-Limit"] = str(rate_item.amount)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(1 + reset_at)
+        response.headers["Retry-After"] = str(
+            max(0, int(1 + reset_at - time.time()))
+        )
+    return response
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -62,7 +96,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     Instrumentator().instrument(app).expose(app)

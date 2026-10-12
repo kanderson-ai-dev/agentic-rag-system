@@ -3,7 +3,9 @@
 The graph shape is:
 
     START -> guardrail --(blocked)--> error_output -> END
-                      '--(safe)-----> retrieve -> grade_documents
+                      '--(safe)-----> budget_gate --(exhausted)--> END
+                                                '--(ok)---------> retrieve
+                                           |-> grade_documents
                                            |--(enough docs)------> generate
                                            |--(retry available)---> transform_query -> retrieve
                                            '--(retries exhausted)--> human_review
@@ -32,11 +34,13 @@ from app.core.config import DEFAULT_MAX_QUESTION_CHARS, Settings
 from app.core.cost_tracking import TokenUsageCallbackHandler
 from app.graph.edges import (
     make_decide_to_generate,
+    route_after_budget_gate,
     route_after_guardrail,
     route_after_human_review,
 )
 from app.graph.nodes import (
     Invokable,
+    make_budget_gate_node,
     make_error_output_node,
     make_generate_node,
     make_grade_documents_node,
@@ -47,6 +51,7 @@ from app.graph.nodes import (
     make_transform_query_node,
 )
 from app.graph.state import GraphState
+from app.services.usage_store import UsageStore
 
 
 def build_graph(
@@ -61,12 +66,20 @@ def build_graph(
     retrieval_mode: str = "hybrid",
     vector_backend: str = "vector",
     graph_backend: str = "graph",
+    budget_check: Callable[[], bool] | None = None,
 ) -> CompiledStateGraph[Any, None, Any, Any]:
-    """Wire the Self-RAG nodes and edges into a compiled, runnable graph."""
+    """Wire the Self-RAG nodes and edges into a compiled, runnable graph.
+
+    ``budget_check`` is a callable returning True once the deployment's
+    UTC-day spend reaches the configured daily cap. The gate node invokes it
+    on every request (after the input guardrail, before retrieval) so the
+    check always reads the live total rather than a build-time snapshot.
+    """
     workflow = StateGraph(GraphState)
 
     workflow.add_node("guardrail", make_guardrail_node(max_question_chars))
     workflow.add_node("error_output", make_error_output_node())
+    workflow.add_node("budget_gate", make_budget_gate_node(budget_check))
     workflow.add_node(
         "retrieve",
         make_hybrid_retrieve_node(
@@ -89,7 +102,12 @@ def build_graph(
     workflow.add_conditional_edges(
         "guardrail",
         route_after_guardrail,
-        {"error_output": "error_output", "retrieve": "retrieve"},
+        {"error_output": "error_output", "budget_gate": "budget_gate"},
+    )
+    workflow.add_conditional_edges(
+        "budget_gate",
+        route_after_budget_gate,
+        {"end": END, "retrieve": "retrieve"},
     )
     workflow.add_edge("error_output", END)
     workflow.add_edge("retrieve", "grade_documents")
@@ -134,6 +152,7 @@ def initial_state(question: str) -> dict[str, Any]:
         "speculative_question": "",
         "prompt_versions": {},
         "node_latencies": {},
+        "budget_exhausted": False,
     }
 
 
@@ -176,8 +195,13 @@ def build_default_graph(
     settings: Settings,
     checkpointer: BaseCheckpointSaver[Any],
     token_handler: TokenUsageCallbackHandler | None = None,
+    usage_store: UsageStore | None = None,
 ) -> CompiledStateGraph[Any, None, Any, Any]:
-    """Build the production graph, wired with real LLM and hybrid retrieval."""
+    """Build the production graph, wired with real LLM and hybrid retrieval.
+
+    ``usage_store`` feeds the in-graph daily-budget gate: when omitted the
+    gate is a pass-through (tests and offline tooling need no usage db).
+    """
     from app.services.graph_store import build_graph_store_service
     from app.services.llm import (
         build_chat_model,
@@ -214,4 +238,12 @@ def build_default_graph(
         retrieval_mode=settings.retrieval_mode,
         vector_backend=vector_store_service.backend,
         graph_backend=graph_store_service.backend,
+        budget_check=(
+            (
+                lambda: usage_store.daily_spend_usd()
+                >= settings.daily_budget_usd
+            )
+            if usage_store is not None
+            else None
+        ),
     )

@@ -68,6 +68,16 @@ class Settings(BaseSettings):
     # never a measured value.
     human_minutes_per_query: float = 6.0
     human_hourly_usd: float = 30.0
+    # Hard cap on LLM spend per UTC day, for the public demo. Enforced
+    # in-graph after the (free) input guardrail and before any LLM call —
+    # blocked input never consumes budget. `GET /health` and the console
+    # performance panel surface the live status.
+    daily_budget_usd: float = 1.00
+
+    # --- Abuse protection ---
+    # Per-IP rate limit on the request-path endpoints (`POST /rag/query` and
+    # its human-review resume). `/auth/login` keeps its own stricter limit.
+    rate_limit_per_minute: int = 20
 
     # --- Self-RAG graph ---
     max_retries: int = 2

@@ -14,9 +14,19 @@ def route_after_guardrail(state: GraphState) -> str:
     """Route after the input guardrail.
 
     - Blocked (prompt injection or empty after sanitization) -> `error_output`.
-    - Safe -> `retrieve`.
+    - Safe -> `budget_gate` (the spend check runs before any LLM call).
     """
-    return "error_output" if state["blocked"] else "retrieve"
+    return "error_output" if state["blocked"] else "budget_gate"
+
+
+def route_after_budget_gate(state: GraphState) -> str:
+    """Route after the daily-budget gate.
+
+    - Daily spend at or over the configured cap -> END; the API layer turns
+      the ``budget_exhausted`` flag into a friendly 429.
+    - Under budget -> `retrieve`.
+    """
+    return "end" if state.get("budget_exhausted") else "retrieve"
 
 
 def make_decide_to_generate(max_retries: int) -> Callable[[GraphState], str]:

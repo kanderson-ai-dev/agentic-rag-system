@@ -62,6 +62,12 @@ class GraphState(TypedDict):
         node_latencies: Per-node wall-clock milliseconds, accumulated by the
             ``timed_node`` decorator via ``merge_node_latencies``. Feeds the
             per-node p50/p95 breakdown on the performance dashboard.
+        budget_exhausted: Set by the budget-gate node when the recorded
+            UTC-day spend has reached the configured daily cap. The request
+            then short-circuits to END before any LLM call and the API
+            translates the flag into a friendly HTTP 429. Runs *after* the
+            input guardrail, so injection attempts still short-circuit for
+            free even when the budget is spent.
     """
 
     question: str
@@ -77,3 +83,4 @@ class GraphState(TypedDict):
     speculative_question: str
     prompt_versions: dict[str, int]
     node_latencies: Annotated[dict[str, float], merge_node_latencies]
+    budget_exhausted: bool

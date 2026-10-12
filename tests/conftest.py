@@ -13,6 +13,11 @@ os.environ["LANGSMITH_TRACING"] = "false"
 # Tests must never reach a tracing backend — provider env vars beat .env, so
 # this keeps the suite offline even when the developer .env selects one.
 os.environ["TRACING_PROVIDER"] = "none"
+# The per-IP limiter is a shared singleton: every TestClient request comes
+# from the same "testclient" IP, so a 20/minute suite-wide budget would make
+# tests flaky in aggregate. The suite runs effectively unlimited; the
+# dedicated rate-limit tests lower it explicitly and reset the bucket after.
+os.environ["RATE_LIMIT_PER_MINUTE"] = "10000"
 
 import re  # noqa: E402
 from typing import Any  # noqa: E402
@@ -162,6 +167,7 @@ def build_test_graph(
     max_retries: int = 2,
     relevant_keyword: str = "LangGraph",
     graph_search_fn: Any | None = None,
+    budget_check: Any | None = None,
 ):
     """Build a fully-stubbed, deterministic Self-RAG graph for tests."""
     return build_graph(
@@ -172,4 +178,5 @@ def build_test_graph(
         graph_search_fn=graph_search_fn if graph_search_fn is not None else _no_graph_results,
         checkpointer=InMemorySaver(),
         max_retries=max_retries,
+        budget_check=budget_check,
     )

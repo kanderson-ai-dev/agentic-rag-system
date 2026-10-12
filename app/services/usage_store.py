@@ -207,6 +207,42 @@ class UsageStore:
             for version, bucket in sorted(aggregates.items())
         ]
 
+    def daily_spend_usd(self) -> float:
+        """Total recorded LLM cost since UTC midnight.
+
+        Timestamps are stored as UTC ISO-8601, so the leading 10 chars are
+        the UTC day — the same clock the daily budget gate enforces on. The
+        aggregate is deliberately global (never session-scoped): the budget
+        protects the deployment's wallet, not one visitor.
+        """
+        today = datetime.now(UTC).date().isoformat()
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM usage "
+            "WHERE substr(timestamp, 1, 10) = ?",
+            (today,),
+        ).fetchone()
+        return float(row[0])
+
+    def budget_status(self, daily_limit_usd: float) -> dict[str, Any]:
+        """Position against the daily budget: spent, remaining, alert flags.
+
+        ``warning`` fires at >= 80% (the visible alert band) and
+        ``exhausted`` at >= 100% — the deterministic block. A non-positive
+        limit counts as already exhausted.
+        """
+        spent = self.daily_spend_usd()
+        used_pct = (
+            spent / daily_limit_usd * 100.0 if daily_limit_usd > 0 else 100.0
+        )
+        return {
+            "daily_limit_usd": daily_limit_usd,
+            "spent_today_usd": spent,
+            "remaining_usd": max(0.0, daily_limit_usd - spent),
+            "used_pct": used_pct,
+            "warning": used_pct >= 80.0,
+            "exhausted": spent >= daily_limit_usd,
+        }
+
     def performance(self, session_id: str | None = None) -> dict[str, Any]:
         """Latency/cost aggregates for the performance dashboard panel.
 

@@ -113,6 +113,34 @@ function renderError(message, retry) {
   $("#answer").appendChild(box);
 }
 
+// 429s are not failures — they're the demo's spend/abuse gates talking, and
+// the server already sends friendly copy (`detail`). Shown as a calm amber
+// notice, with a Retry button only when the response carries `Retry-After`
+// (a rate limit cools down in seconds; an exhausted daily budget won't reset
+// until tomorrow, so retrying is pointless and the button is omitted).
+function renderNotice(message, retry) {
+  const box = document.createElement("div");
+  box.className =
+    "rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-relaxed text-amber-200/90";
+  box.setAttribute("role", "status");
+  box.textContent = message;
+
+  if (retry) {
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className =
+      "ml-3 inline-block rounded-lg border border-amber-500/40 px-3 py-1 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/20";
+    retryBtn.textContent = "Retry";
+    retryBtn.addEventListener("click", () => {
+      clearAnswer();
+      retry();
+    });
+    box.appendChild(retryBtn);
+  }
+
+  $("#answer").appendChild(box);
+}
+
 async function ask(question) {
   if (busy) return;
   setBusy(true);
@@ -133,7 +161,14 @@ async function ask(question) {
     }
   } catch (error) {
     clearAnswer();
-    renderError(`Something went wrong: ${error.message}`, () => ask(question));
+    if (error.status === 429) {
+      renderNotice(
+        error.message,
+        error.retryAfter ? () => ask(question) : null
+      );
+    } else {
+      renderError(`Something went wrong: ${error.message}`, () => ask(question));
+    }
   } finally {
     setBusy(false);
   }

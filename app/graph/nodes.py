@@ -361,6 +361,26 @@ def make_human_review_node() -> NodeFn:
     return human_review_node
 
 
+def make_budget_gate_node(
+    is_exhausted: Callable[[], bool] | None = None,
+) -> NodeFn:
+    """Block the request before any LLM call once the daily budget is spent.
+
+    Runs after the input guardrail — so malicious input still short-circuits
+    for free — and before retrieval/generation, the first nodes that spend
+    money (embeddings, LLM round trips). ``is_exhausted`` is a callable so the
+    check always reads the usage store's current UTC-day total, not a value
+    frozen at graph-build time. ``None`` means "no budget configured" — the
+    gate is then a pass-through.
+    """
+
+    @timed_node("budget_gate")
+    def budget_gate_node(state: GraphState) -> dict[str, Any]:
+        return {"budget_exhausted": bool(is_exhausted and is_exhausted())}
+
+    return budget_gate_node
+
+
 def make_guardrail_node(max_length: int = DEFAULT_MAX_QUESTION_CHARS) -> NodeFn:
     """Sanitize the input question and block it if a prompt injection is detected.
 
