@@ -125,12 +125,16 @@ def screen_output(text: str, protected_texts: Iterable[str] | None = None) -> st
 
 
 def _system_prompt_texts() -> list[str]:
-    """System text of the currently *promoted* prompts, read live each call."""
-    from app.graph.prompts import get_registry
+    """System text of the currently *effective* prompts, read live each call.
+
+    Uses `get_system_text` so evaluation pins are respected — a candidate under
+    A/B test is checked for leakage of its own text, not the promoted one.
+    """
+    from app.graph.prompts import get_system_text
     from app.services.prompt_registry import PromptName
 
     return [
-        get_registry().promoted(name).system
+        get_system_text(name)
         for name in (
             PromptName.GRADE_DOCUMENTS,
             PromptName.GENERATE_ANSWER,

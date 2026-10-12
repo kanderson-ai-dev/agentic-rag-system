@@ -149,6 +149,7 @@ def _reset_prompt_registry_singleton():
     from app.graph import prompts as prompts_module
 
     prompts_module.set_registry(None)
+    prompts_module.pin_versions(None)
 
 
 def build_test_graph(

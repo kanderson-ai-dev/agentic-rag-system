@@ -11,6 +11,7 @@ import json
 from functools import lru_cache
 from typing import Any
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -86,12 +87,24 @@ def _llm_judge_prompt() -> ChatPromptTemplate:
     )
 
 
+# Optional token-usage handler the eval runners attach so judge/metric LLM
+# calls are counted in the run's cost (not just the pipeline's).
+_eval_token_handler: BaseCallbackHandler | None = None
+
+
+def set_token_handler(handler: BaseCallbackHandler | None) -> None:
+    """Attach a token handler to evaluator LLM calls (None clears)."""
+    global _eval_token_handler
+    _eval_token_handler = handler
+    _get_llm.cache_clear()
+
+
 @lru_cache
 def _get_llm():
     from app.core.config import get_settings
     from app.services.llm import build_chat_model
 
-    return build_chat_model(get_settings())
+    return build_chat_model(get_settings(), _eval_token_handler)
 
 
 def _score_from_response(prompt: ChatPromptTemplate, **inputs: str) -> float:
@@ -164,22 +177,48 @@ def relevance_evaluator(run: Any, example: Any) -> dict[str, Any]:
     return {"key": "relevance", "score": answer_relevancy(question, answer)}
 
 
-def llm_as_judge_evaluator(run: Any, example: Any) -> dict[str, Any]:
-    """Rubric LLM-as-judge (1-5) for correctness, usefulness and safety."""
-    question, answer, _ = _extract_qa(run)
-
+def llm_judge_score(question: str, answer: str) -> tuple[float, str]:
+    """Rubric LLM-as-judge: (1-5 mean score, justification)."""
     chain = _llm_judge_prompt() | _get_llm() | StrOutputParser()
     raw = chain.invoke({"question": question, "answer": answer})
     try:
         scores = json.loads(raw)
     except json.JSONDecodeError:
         scores = {"correctness": 3, "usefulness": 3, "safety": 3, "justification": raw}
-
     average = (
         scores.get("correctness", 3) + scores.get("usefulness", 3) + scores.get("safety", 3)
     ) / 3
+    return average, str(scores.get("justification", ""))
+
+
+def llm_as_judge_evaluator(run: Any, example: Any) -> dict[str, Any]:
+    """Rubric LLM-as-judge (1-5) for correctness, usefulness and safety."""
+    question, answer, _ = _extract_qa(run)
+    average, justification = llm_judge_score(question, answer)
     return {
         "key": "llm_as_judge",
         "score": average,
-        "comment": scores.get("justification", ""),
+        "comment": justification,
+    }
+
+
+def default_scorers() -> dict[str, Any]:
+    """Scorers map for `evaluation.harness.score_results` (real LLM judges)."""
+
+    return {
+        "faithfulness": lambda question="", answer="", context="": faithfulness(
+            context, answer
+        ),
+        "answer_relevancy": lambda question="", answer="", context="": (
+            answer_relevancy(question, answer)
+        ),
+        "context_precision": lambda question="", answer="", context="": (
+            context_precision(question, context)
+        ),
+        "context_recall": lambda question="", answer="", context="": (
+            context_recall(question, context)
+        ),
+        "llm_as_judge": lambda question="", answer="", context="": llm_judge_score(
+            question, answer
+        )[0],
     }

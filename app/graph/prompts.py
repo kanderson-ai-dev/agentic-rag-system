@@ -37,6 +37,12 @@ REFUSAL_TEXT = "I don't know."
 _registry: PromptRegistry | None = None
 _registry_lock = threading.Lock()
 
+# Version pins: when set, ``get_prompt(name, version=None)`` resolves the
+# pinned version instead of the promoted one. Evaluation runners and the A/B
+# engine use this to score a *candidate* without mutating registry state —
+# pins live for the duration of a run and never write audit entries.
+_pinned: dict[PromptName, int] = {}
+
 
 def get_registry() -> PromptRegistry:
     """Return the process-wide registry, built lazily from ``prompts_dir``."""
@@ -55,15 +61,35 @@ def set_registry(registry: PromptRegistry | None) -> None:
         _registry = registry
 
 
+def pin_versions(pins: dict[PromptName | str, int] | None) -> None:
+    """Pin prompt versions for resolution (``None`` clears all pins).
+
+    A pinned version overrides ``promoted`` for every resolution path —
+    chains, judge prompts, guardrail protected texts — until cleared.
+    """
+    global _pinned
+    with _registry_lock:
+        _pinned = {PromptName(n): v for n, v in (pins or {}).items()}
+
+
+def _resolve_version(name: PromptName | str, version: int | None) -> int | None:
+    """Effective version to load: explicit arg > pin > promoted (``None``)."""
+    if version is not None:
+        return version
+    with _registry_lock:
+        return _pinned.get(PromptName(name))
+
+
 def get_prompt(
     name: PromptName | str, version: int | None = None
 ) -> ChatPromptTemplate:
     """Build a ``ChatPromptTemplate`` from a stored prompt version.
 
-    ``version=None`` resolves the currently promoted version, so prompts built
-    through this facade always reflect the registry at call time.
+    ``version=None`` resolves the pinned version when one is set, otherwise
+    the currently promoted version, so prompts built through this facade
+    always reflect the registry at call time.
     """
-    prompt = get_registry().get(name, version)
+    prompt = get_registry().get(name, _resolve_version(name, version))
     messages: list[tuple[str, str]] = [("system", prompt.system)]
     if prompt.human is not None:
         messages.append(("human", prompt.human))
@@ -72,14 +98,19 @@ def get_prompt(
 
 def get_system_text(name: PromptName | str, version: int | None = None) -> str:
     """Return just the system text of a stored prompt version."""
-    return get_registry().get(name, version).system
+    return get_registry().get(name, _resolve_version(name, version)).system
 
 
 def active_versions() -> dict[str, int]:
-    """Map ``{prompt_name: promoted_version}`` and refresh the gauge."""
+    """Map ``{prompt_name: effective_version}`` and refresh the gauge.
+
+    Reports the pinned version when a pin is set (evaluation evidence then
+    records what actually ran), otherwise the promoted one.
+    """
     registry = get_registry()
     versions = {
-        name.value: registry.promoted(name).version for name in PromptName
+        name.value: registry.get(name, _resolve_version(name, None)).version
+        for name in PromptName
     }
     for prompt_name, version in versions.items():
         agent_prompt_active_version.labels(prompt=prompt_name).set(version)

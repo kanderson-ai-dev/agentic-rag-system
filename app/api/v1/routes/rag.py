@@ -35,6 +35,7 @@ def query(
     `status="interrupted"` when the correction loop escalated to a human
     reviewer; resolve it via `POST /api/v1/rag/query/{thread_id}/review`.
     """
+    start = time.perf_counter()  # whole request, not just the graph call
     thread_id = payload.thread_id or str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
@@ -43,7 +44,6 @@ def query(
         token_handler.prompt_tokens = 0
         token_handler.completion_tokens = 0
 
-    start = time.perf_counter()
     result = graph.invoke(initial_state(payload.question), config=config)
     latency_ms = int((time.perf_counter() - start) * 1000)
 

@@ -1,20 +1,28 @@
 """Run a LangSmith experiment against the compiled graph (LLM-as-judge).
 
-This script uses `langsmith.evaluate()` to produce a real, versioned Experiment
-in the LangSmith dashboard (dataset + evaluator runs), falling back to a local
-evaluation only if the LangSmith API key is absent or unauthorized.
+Uses `langsmith.evaluate()` to produce a versioned Experiment in the LangSmith
+dashboard — dataset ``agentic-rag-system-eval-v<dataset_version>``, experiment
+prefix carrying the prompt versions that ran — and falls back to the local
+harness scorecard when LangSmith is unavailable.
+
+CLI flags mirror `run_ragas.py`: ``--prompt-version NAME=N`` (repeatable),
+``--retrieval-mode``, ``--max-cost-usd``, ``--output``.
 """
 
+import argparse
 import json
-from datetime import UTC, datetime
+import sys
 from functools import lru_cache
 from pathlib import Path
 
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.core.config import get_settings
+from app.core.cost_tracking import TokenUsageCallbackHandler
 from app.graph.graph import build_default_graph, initial_state
-from evaluation.dataset import build_dataset
+from app.graph.prompts import pin_versions
+from evaluation import evaluators
+from evaluation.dataset import build_dataset, dataset_version
 from evaluation.evaluators import (
     answer_relevancy,
     context_precision,
@@ -22,15 +30,26 @@ from evaluation.evaluators import (
     faithfulness,
     llm_as_judge_evaluator,
 )
+from evaluation.harness import (
+    CostCapExceeded,
+    parse_prompt_version_overrides,
+    prompt_version_tag,
+    run_cases,
+    run_metadata,
+    score_results,
+)
 
-DATASET_NAME = "agentic-rag-system-eval"
+
+def dataset_name() -> str:
+    """LangSmith dataset name, versioned by dataset content hash."""
+    return f"agentic-rag-system-eval-v{dataset_version()}"
 
 
 @lru_cache
-def _graph():
+def _graph(token_handler: TokenUsageCallbackHandler | None = None):
     settings = get_settings()
     settings.configure_langsmith_env()
-    return build_default_graph(settings, InMemorySaver())
+    return build_default_graph(settings, InMemorySaver(), token_handler)
 
 
 def _target(inputs: dict) -> dict:
@@ -41,54 +60,44 @@ def _target(inputs: dict) -> dict:
     return {
         "answer": result.get("generation", ""),
         "contexts": [doc.page_content for doc in result.get("documents", [])],
+        "blocked": bool(result.get("blocked", False)),
+        "escalated": bool(result.get("__interrupt__")),
     }
 
 
-def run_local_evaluation() -> dict:
+def run_local_evaluation(
+    *,
+    prompt_versions: dict[str, int] | None = None,
+    max_cost_usd: float | None = None,
+) -> dict:
     """Run evaluation locally without LangSmith dataset creation."""
-    cases = build_dataset()
-    results = []
+    settings = get_settings()
+    settings.configure_langsmith_env()
 
-    for case in cases:
-        result = _target({"question": case["question"]})
-        answer = result["answer"]
-        context = "\n\n".join(result["contexts"])
+    token_handler = TokenUsageCallbackHandler()
+    evaluators.set_token_handler(token_handler)
+    pin_versions(prompt_versions)
+    try:
+        cases = build_dataset()
+        results = run_cases(
+            _graph(token_handler),
+            cases,
+            token_handler=token_handler,
+            max_cost_usd=max_cost_usd,
+            settings=settings,
+        )
+        scorecard = score_results(
+            results,
+            evaluators.default_scorers(),
+            token_handler=token_handler,
+            settings=settings,
+        )
+    finally:
+        pin_versions(None)
+        evaluators.set_token_handler(None)
 
-        # Compute metrics
-        faithfulness_score = faithfulness(context, answer)
-        relevancy_score = answer_relevancy(case["question"], answer)
-        precision_score = context_precision(case["question"], context)
-        recall_score = context_recall(case["question"], context)
-
-        results.append({
-            "question": case["question"],
-            "ground_truth": case["ground_truth"],
-            "answer": answer,
-            "faithfulness": faithfulness_score,
-            "answer_relevancy": relevancy_score,
-            "context_precision": precision_score,
-            "context_recall": recall_score,
-        })
-
-    # Calculate averages
-    if results:
-        avg_faithfulness = sum(r["faithfulness"] for r in results) / len(results)
-        avg_relevancy = sum(r["answer_relevancy"] for r in results) / len(results)
-        avg_precision = sum(r["context_precision"] for r in results) / len(results)
-        avg_recall = sum(r["context_recall"] for r in results) / len(results)
-    else:
-        avg_faithfulness = avg_relevancy = avg_precision = avg_recall = 0.0
-
-    return {
-        "averages": {
-            "faithfulness": round(avg_faithfulness, 4),
-            "answer_relevancy": round(avg_relevancy, 4),
-            "context_precision": round(avg_precision, 4),
-            "context_recall": round(avg_recall, 4),
-        },
-        "individual_results": results,
-        "generated_at": datetime.now(UTC).isoformat(),
-    }
+    scorecard["meta"] = run_metadata(settings)
+    return scorecard
 
 
 def _get_or_create_dataset(client, name: str, description: str):
@@ -145,10 +154,26 @@ def _rag_evaluators() -> list:
     def _judge(run, example) -> dict:
         return llm_as_judge_evaluator(run, example)
 
-    return [_faithfulness, _relevancy, _precision, _recall, _judge]
+    def _behavior(run, example) -> dict:
+        """1 when the observed behavior matches the expected_behavior label."""
+        expected = (example.metadata or {}).get("expected_behavior", "answer")
+        outputs = run.outputs or {}
+        if expected == "block_injection":
+            ok = bool(outputs.get("blocked"))
+        elif expected == "refuse_out_of_domain":
+            ok = bool(outputs.get("blocked") or outputs.get("escalated"))
+        else:
+            ok = not outputs.get("blocked", False)
+        return {"key": "expected_behavior", "score": 1.0 if ok else 0.0}
+
+    return [_faithfulness, _relevancy, _precision, _recall, _judge, _behavior]
 
 
-def try_langsmith_evaluation() -> dict | None:
+def try_langsmith_evaluation(
+    *,
+    prompt_versions: dict[str, int] | None = None,
+    max_cost_usd: float | None = None,
+) -> dict | None:
     """Run a real LangSmith Experiment (dataset + evaluate()), falling back to a
     local evaluation only if LangSmith is unavailable or unauthorized.
     """
@@ -156,14 +181,18 @@ def try_langsmith_evaluation() -> dict | None:
         from langsmith import Client, evaluate
     except ImportError:
         print("LangSmith not installed. Running local evaluation.")
-        return run_local_evaluation()
+        return run_local_evaluation(
+            prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
+        )
 
     settings = get_settings()
     settings.configure_langsmith_env()
 
     if not settings.langsmith_api_key:
         print("LANGCHAIN_API_KEY not configured. Running local evaluation instead.")
-        return run_local_evaluation()
+        return run_local_evaluation(
+            prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
+        )
 
     client = Client()
 
@@ -171,66 +200,159 @@ def try_langsmith_evaluation() -> dict | None:
         list(client.list_datasets(limit=1))
     except Exception as e:
         print(f"LangSmith API key lacks permissions ({e}). Running local evaluation instead.")
-        return run_local_evaluation()
+        return run_local_evaluation(
+            prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
+        )
 
+    pin_versions(prompt_versions)
+    token_handler = TokenUsageCallbackHandler()
+    evaluators.set_token_handler(token_handler)
     try:
+        name = dataset_name()
         dataset, created = _get_or_create_dataset(
             client,
-            DATASET_NAME,
-            description="Curated questions for the Agentic RAG system (LangGraph, Self-RAG, "
-            "HITL, FastAPI, checkpointing), including an out-of-domain case.",
+            name,
+            description="Unified Agentic RAG eval set (single-hop, multi-hop, "
+            "out-of-domain, injection, other-language, vague).",
         )
         if created:
             for case in build_dataset():
                 client.create_example(
                     inputs={"question": case["question"]},
                     outputs={"answer": case["ground_truth"]},
+                    metadata={
+                        "id": case["id"],
+                        "category": case["category"],
+                        "expected_behavior": case["expected_behavior"],
+                    },
                     dataset_id=dataset.id,
                 )
 
+        from app.core.cost_tracking import calculate_cost_usd
+        from app.graph.prompts import active_versions
+
+        tag = prompt_version_tag(active_versions())
+
+        # Build the target over the handler-wired graph so spend is measured;
+        # the cap is checked after the run (evaluate() can't abort mid-flight).
+        graph = _graph(token_handler)
+
+        def target(inputs: dict) -> dict:
+            result = graph.invoke(
+                initial_state(inputs["question"]),
+                config={"configurable": {"thread_id": "eval"}},
+            )
+            return {
+                "answer": result.get("generation", ""),
+                "contexts": [
+                    doc.page_content for doc in result.get("documents", [])
+                ],
+                "blocked": bool(result.get("blocked", False)),
+                "escalated": bool(result.get("__interrupt__")),
+            }
+
         results = evaluate(
-            _target,
-            data=dataset.name,
+            target,
+            data=name,
             evaluators=_rag_evaluators(),
-            experiment_prefix="agentic-rag-system",
-            description="Self-RAG hybrid retrieval (Pinecone/Chroma + Neo4j/NetworkX) "
-            "evaluated with RAGAS-style LLM-as-judge metrics.",
+            experiment_prefix=f"agentic-rag-system-{tag}",
+            description=f"prompt_versions={tag}; dataset_version={dataset_version()}",
             max_concurrency=2,
         )
+        spent = calculate_cost_usd(
+            token_handler.prompt_tokens,
+            token_handler.completion_tokens,
+            settings.cost_input_price_per_1m,
+            settings.cost_output_price_per_1m,
+        )
+        if max_cost_usd is not None and spent > max_cost_usd:
+            print(f"WARNING: run spent ${spent:.4f} > cap ${max_cost_usd:.4f}")
         print(f"LangSmith experiment created: {results.experiment_name}")
         print(f"View it at: {results.url}")
         return None
     except Exception as e:
         print(f"LangSmith evaluate() failed: {e}. Running local evaluation instead.")
-        return run_local_evaluation()
+        return run_local_evaluation(
+            prompt_versions=prompt_versions, max_cost_usd=max_cost_usd
+        )
+    finally:
+        pin_versions(None)
+        evaluators.set_token_handler(None)
 
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--prompt-version",
+        action="append",
+        metavar="NAME=N",
+        dest="prompt_versions",
+        help="pin a prompt version for the run (repeatable)",
+    )
+    parser.add_argument(
+        "--retrieval-mode",
+        choices=("hybrid", "vector_only", "graph_only", "no_retrieval"),
+        default="hybrid",
+        help="retrieval backend combination (non-hybrid lands in a later phase)",
+    )
+    parser.add_argument(
+        "--max-cost-usd",
+        type=float,
+        default=None,
+        help="abort the run when accumulated spend exceeds this cap",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="local-fallback scorecard path",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    try:
+        pins = parse_prompt_version_overrides(args.prompt_versions)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.retrieval_mode != "hybrid":
+        print(
+            f"error: retrieval_mode={args.retrieval_mode!r} lands in a later phase",
+            file=sys.stderr,
+        )
+        return 2
+
     print("Running LLM-as-judge evaluation...")
-    result = try_langsmith_evaluation()
+    try:
+        result = try_langsmith_evaluation(
+            prompt_versions=pins or None, max_cost_usd=args.max_cost_usd
+        )
+    except CostCapExceeded as exc:
+        print(f"aborted: {exc}", file=sys.stderr)
+        return 3
 
     if result:
-        # Save local results
         results_dir = Path(__file__).resolve().parent / "results"
         results_dir.mkdir(parents=True, exist_ok=True)
-
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H%M%S")
-        output_file = results_dir / f"llm_judge_evaluation_{timestamp}.json"
-
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2)
-
-        print(f"\nLocal evaluation results saved to: {output_file}")
+        output = args.output or (
+            results_dir / "llm_judge_evaluation.json"
+        )
+        output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        print(f"\nLocal evaluation results saved to: {output}")
         print("\nAverage Scores:")
-        for metric, score in result["averages"].items():
-            print(f"  {metric}: {score}")
-
-        print("\nIndividual Results:")
-        for i, r in enumerate(result["individual_results"], 1):
-            print(f"\n{i}. Question: {r['question']}")
-            print(f"   Answer: {r['answer'][:100]}...")
-            print(f"   Faithfulness: {r['faithfulness']}, Relevancy: {r['answer_relevancy']}")
+        for metric in (
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
+            "llm_as_judge",
+        ):
+            print(f"  {metric}: {result.get(metric)}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
