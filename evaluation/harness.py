@@ -68,6 +68,7 @@ class CaseResult:
     escalated: bool
     latency_ms: int
     behavior_ok: bool
+    prompt_versions: dict[str, int] = field(default_factory=dict)
     scores: dict[str, float] = field(default_factory=dict)
 
 
@@ -153,6 +154,10 @@ def run_cases(
                     escalated=escalated,
                     answer=answer,
                 ),
+                prompt_versions={
+                    str(k): int(v)
+                    for k, v in (result.get("prompt_versions") or {}).items()
+                },
             )
         )
     _check_budget(token_handler, max_cost_usd, settings)

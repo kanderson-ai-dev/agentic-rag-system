@@ -106,14 +106,15 @@ class AbTestJobManager:
 
 
 def default_ab_test_runner(prompt_name: str, candidate_version: int) -> dict[str, Any]:
-    """Delegate to the evaluation A/B engine (added in a later phase).
+    """Run the evaluation A/B engine with the configured hard cost/time caps."""
+    from app.core.config import get_settings
+    from evaluation.ab_test import run_ab_test
 
-    Until the engine module exists this raises `NotImplementedError`, which the
-    job manager records as a failed job — the 202/poll contract still works.
-    """
-    try:
-        from evaluation.ab_test import run_ab_test
-    except ImportError as exc:
-        raise NotImplementedError("A/B evaluation engine not available") from exc
-    result: dict[str, Any] = run_ab_test(prompt_name, candidate_version)
+    settings = get_settings()
+    result: dict[str, Any] = run_ab_test(
+        prompt_name,
+        candidate_version,
+        max_cost_usd=settings.ab_test_max_cost_usd,
+        deadline_seconds=settings.ab_test_timeout_seconds,
+    )
     return result

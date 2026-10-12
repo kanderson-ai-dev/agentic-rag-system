@@ -210,11 +210,13 @@ def promote(
     payload: PromoteRequest,
     actor: str = Depends(require_prompt_write),
     registry: PromptRegistry = Depends(get_prompt_registry),
+    manager: AbTestJobManager = Depends(get_ab_test_manager),
 ) -> dict[str, Any]:
     """Promote a candidate — gated on EDD thresholds and non-regression.
 
-    Evidence comes from the request body's `evaluation` or from the
-    candidate's stored A/B result. Failures return 409 naming the metrics.
+    Evidence comes from the request body's `evaluation`, from the candidate's
+    stored A/B result, or resolved from an `ab_test_id` job. Failures return
+    409 naming the metrics.
     """
     with _registry_errors():
         candidate = registry.get(name, payload.version)
@@ -225,7 +227,22 @@ def promote(
         promoted = registry.promoted(name)
 
     evidence = payload.evaluation or candidate.evaluation
-    if evidence is None:
+    # An `ab_test_id` with no inline scorecard resolves against the job
+    # manager — the typical API flow: run A/B, poll, promote by id.
+    if (
+        evidence is not None
+        and not getattr(evidence, "scorecard", None)
+        and getattr(evidence, "ab_test_id", None)
+    ):
+        job = manager.get(str(evidence.ab_test_id))
+        if job is not None and job.get("status") == "succeeded":
+            result = job.get("result") or {}
+            evidence = PromptEvaluation(
+                dataset_version=(result.get("meta") or {}).get("dataset_version"),
+                scorecard=result.get("candidate_scorecard") or {},
+                ab_test_id=str(evidence.ab_test_id),
+            )
+    if evidence is None or not getattr(evidence, "scorecard", None):
         raise HTTPException(
             status_code=409,
             detail={

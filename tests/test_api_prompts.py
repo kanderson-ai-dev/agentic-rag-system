@@ -315,6 +315,35 @@ class TestAbTestEndpoints:
 
         assert response.status_code == 404
 
+    def test_promote_resolves_scorecard_from_ab_test_id(
+        self, registry: PromptRegistry, tmp_path: Path
+    ) -> None:
+        """The real API flow: run A/B -> promote by job id without resending
+        the scorecard."""
+        settings = _settings(jwt_secret_key=None, prompt_registry_write_enabled=True)
+        runner = lambda name, version: {  # noqa: E731
+            "candidate_scorecard": _GOOD_SCORECARD,
+            "meta": {"dataset_version": "abc123"},
+        }
+        registry.create_candidate("generate_answer", **_candidate_body())
+        with _client(settings, tmp_path=tmp_path, runner=runner) as client:
+            job_id = client.post(
+                "/api/v1/prompts/generate_answer/ab-test",
+                json={"candidate_version": 2},
+            ).json()["job_id"]
+            assert _wait_for_job(client, job_id)["status"] == "succeeded"
+
+            promoted = client.post(
+                "/api/v1/prompts/generate_answer/promote",
+                json={"version": 2, "evaluation": {"ab_test_id": job_id}},
+            )
+
+        assert promoted.status_code == 200
+        evaluation = registry.promoted("generate_answer").evaluation
+        assert evaluation is not None
+        assert evaluation.ab_test_id == job_id
+        assert evaluation.scorecard["faithfulness"] == pytest.approx(0.90)
+
 
 class TestPromoteRollback:
     def _create_candidate(self, registry: PromptRegistry) -> int:

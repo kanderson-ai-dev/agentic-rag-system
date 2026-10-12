@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     # Escape hatch for open (unauthenticated) deployments: when no JWT secret
     # is configured, registry mutations are refused unless this is true.
     prompt_registry_write_enabled: bool = False
+    # A/B API runs spend real tokens on the live eval dataset — hard caps.
+    ab_test_max_cost_usd: float = 1.0
+    ab_test_timeout_seconds: float = 600.0
 
     # --- Checkpointing (required for human-in-the-loop interrupts) ---
     checkpoint_db_path: str = "data/checkpoints.sqlite"
