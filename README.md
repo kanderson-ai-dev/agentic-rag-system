@@ -113,6 +113,27 @@ And every evaluator runs as a real trace (`gpt-4o-mini`, token usage visible):
 
 ![LangSmith — evaluator trace detail](docs/screenshots/langsmith-experiment-3.png)
 
+The same evidence regenerated on **Langfuse** (the provider is swappable via
+`TRACING_PROVIDER` — LangSmith's monthly trace quota was exhausted). The
+versioned dataset `agentic-rag-system-eval-v6ec2c719f9` — 18 typed cases
+(single-hop, multi-hop, out-of-domain, injection, other-language, vague):
+
+![Langfuse — versioned evaluation dataset](docs/screenshots/langfuse-eval-dataset.png)
+
+Experiment `ga2-gd1-lj1-tq1-f964ae3-2026-10-12` — the full dataset run after
+`generate_answer` v2 was promoted through the measured A/B gate
+(`evaluation/results/ab/0b2856ed2f27.json`). Aggregate: faithfulness 1.00,
+answer_relevancy 1.00, context_precision 1.00, context_recall 0.95,
+expected_behavior 1.00, llm_as_judge 4.90:
+
+![Langfuse — experiment per-item evaluator scores](docs/screenshots/langfuse-experiment-scores.png)
+
+Every item is a real end-to-end trace: the span tree shows the Self-RAG
+pipeline (guardrail → hybrid retrieve → grade → generate → output guardrail)
+with per-node latency and token cost:
+
+![Langfuse — single-item trace tree](docs/screenshots/langfuse-trace-tree.png)
+
 Trend history is tracked in `evaluation/results/TREND.md` (regenerated with
 `python evaluation/run_ragas.py --report`).
 
