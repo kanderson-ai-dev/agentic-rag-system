@@ -171,38 +171,41 @@ class TestPromptVersionOverrides:
                 parse_prompt_version_overrides([bad])
 
     def test_pin_resolves_candidate(self, registry: PromptRegistry) -> None:
-        registry.create_candidate(
+        pinned = registry.create_candidate(
             "generate_answer",
             system="Pinned system. {context}",
             human="Q: {question}",
             author="t",
             description="d",
             changelog="c",
-        )
+        ).version
         try:
-            pin_versions({"generate_answer": 2})
+            pin_versions({"generate_answer": pinned})
             prompt = get_prompt("generate_answer")
             assert "Pinned system" in prompt.messages[0].prompt.template
             assert get_system_text("generate_answer").startswith("Pinned")
-            assert active_versions()["generate_answer"] == 2
+            assert active_versions()["generate_answer"] == pinned
         finally:
             pin_versions(None)
-        assert active_versions()["generate_answer"] == 1
+        assert (
+            active_versions()["generate_answer"]
+            == registry.promoted("generate_answer").version
+        )
 
     def test_explicit_version_beats_pin(self, registry: PromptRegistry) -> None:
         pin_versions({"generate_answer": 1})
         try:
-            # explicit version arg wins over the pin (both are v1 here, so use
-            # a second candidate to distinguish)
-            registry.create_candidate(
+            # explicit version arg wins over the pin (pin is v1, so use a
+            # fresh candidate to distinguish)
+            other = registry.create_candidate(
                 "generate_answer",
                 system="Other. {context}",
                 human="Q: {question}",
                 author="t",
                 description="d",
                 changelog="c",
-            )
-            prompt = get_prompt("generate_answer", version=2)
+            ).version
+            prompt = get_prompt("generate_answer", version=other)
             assert "Other." in prompt.messages[0].prompt.template
         finally:
             pin_versions(None)
@@ -284,7 +287,9 @@ class TestMetadata:
         monkeypatch.setenv("NEO4J_PASSWORD", "")
         settings = Settings()
         meta = run_metadata(settings, retrieval_mode="hybrid")
-        assert meta["prompt_versions"]["generate_answer"] == 1
+        assert meta["prompt_versions"]["generate_answer"] == registry.promoted(
+            "generate_answer"
+        ).version
         assert meta["retrieval_mode"] == "hybrid"
         assert meta["dataset_version"] == dataset_version()
         assert meta["model"] == settings.chat_model_name
@@ -354,7 +359,9 @@ class TestScorecardStamping:
         assert card["faithfulness"] == pytest.approx(0.9)
         meta = card["meta"]
         assert meta["dataset_version"] == dataset_version()
-        assert meta["prompt_versions"]["generate_answer"] == 1
+        assert meta["prompt_versions"]["generate_answer"] == registry.promoted(
+            "generate_answer"
+        ).version
         # whichever backend the local .env configures is stamped honestly
         assert meta["vector_backend"] in {"chroma", "pinecone"}
         assert card["cases_count"] == len(SAMPLE_CASES)

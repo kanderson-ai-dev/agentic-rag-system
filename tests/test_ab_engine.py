@@ -90,6 +90,23 @@ class TestGateTruthTable:
             _good_card(latency_p95_ms=3500), _good_card(latency_p95_ms=3000)
         ).allowed is True
 
+    def test_latency_improvement_is_not_a_regression(self) -> None:
+        """Lower-is-better metrics improving vs. baseline must not trip the
+        generic regression check (a Phase-7 real run exposed this)."""
+        result = evaluate_promotion(
+            _good_card(latency_p50_ms=1500, latency_p95_ms=2000),
+            _good_card(latency_p50_ms=3000, latency_p95_ms=3000),
+        )
+        assert result.allowed is True
+        assert result.failures == []
+
+    def test_blocks_p50_regression_over_20pct(self) -> None:
+        result = evaluate_promotion(
+            _good_card(latency_p50_ms=3700), _good_card(latency_p50_ms=3000)
+        )
+        assert result.allowed is False
+        assert any("latency_p50_ms" in f for f in result.failures)
+
     def test_blocks_ood_refusal_drop(self) -> None:
         result = evaluate_promotion(_good_card(ood_refusal_rate=0.5), None)
         assert result.allowed is False
@@ -111,6 +128,9 @@ class _FakeGraph:
     """Arm-dependent fake: the answer differs per arm and the result stamps
     `active_versions()` — the same field the real nodes write — so tests prove
     which prompt version each case actually resolved."""
+
+    def __init__(self, baseline_version: int) -> None:
+        self._baseline_version = baseline_version
 
     def invoke(self, state: dict, config: dict | None = None) -> dict[str, Any]:
         from app.graph.prompts import active_versions
@@ -134,7 +154,7 @@ class _FakeGraph:
             }
         arm = (
             "candidate"
-            if versions.get("generate_answer") != 1
+            if versions.get("generate_answer") != self._baseline_version
             else "baseline"
         )
         return {
@@ -184,6 +204,10 @@ def _make_candidate(registry: PromptRegistry) -> int:
     ).version
 
 
+def _baseline(registry: PromptRegistry) -> _FakeGraph:
+    return _FakeGraph(registry.promoted("generate_answer").version)
+
+
 class TestAbEngine:
     def test_run_ab_test_scores_both_arms(
         self, registry: PromptRegistry, tmp_path: Path
@@ -193,12 +217,14 @@ class TestAbEngine:
             "generate_answer",
             v2,
             registry=registry,
-            graph=_FakeGraph(),
+            graph=_baseline(registry),
             scorers=_arm_scorers(),
             results_dir=tmp_path / "ab",
         )
 
-        assert result["baseline_version"] == 1
+        assert result["baseline_version"] == registry.promoted(
+            "generate_answer"
+        ).version
         assert result["candidate_version"] == v2
         assert result["candidate_scorecard"]["faithfulness"] > (
             result["baseline_scorecard"]["faithfulness"]
@@ -218,7 +244,7 @@ class TestAbEngine:
             "generate_answer",
             v2,
             registry=registry,
-            graph=_FakeGraph(),
+            graph=_baseline(registry),
             scorers=_arm_scorers(),
             results_dir=tmp_path / "ab",
         )
@@ -227,8 +253,10 @@ class TestAbEngine:
         assert all(
             c["prompt_versions"]["generate_answer"] == v2 for c in cand_cases
         )
+        promoted = registry.promoted("generate_answer").version
         assert all(
-            c["prompt_versions"]["generate_answer"] == 1 for c in base_cases
+            c["prompt_versions"]["generate_answer"] == promoted
+            for c in base_cases
         )
 
     def test_rejects_same_version_both_arms(
@@ -237,9 +265,9 @@ class TestAbEngine:
         with pytest.raises(AbTestError):
             run_ab_test(
                 "generate_answer",
-                1,
+                registry.promoted("generate_answer").version,
                 registry=registry,
-                graph=_FakeGraph(),
+                graph=_baseline(registry),
                 scorers=_arm_scorers(),
                 results_dir=tmp_path / "ab",
             )
@@ -254,7 +282,7 @@ class TestAbEngine:
                 "generate_answer",
                 99,
                 registry=registry,
-                graph=_FakeGraph(),
+                graph=_baseline(registry),
                 scorers=_arm_scorers(),
                 results_dir=tmp_path / "ab",
             )
@@ -269,7 +297,7 @@ class TestAbEngine:
             v3,
             baseline_version=v2,
             registry=registry,
-            graph=_FakeGraph(),
+            graph=_FakeGraph(v2),
             scorers=_arm_scorers(),
             results_dir=tmp_path / "ab",
         )
@@ -284,7 +312,7 @@ class TestAbEngine:
             "generate_answer",
             v2,
             registry=registry,
-            graph=_FakeGraph(),
+            graph=_baseline(registry),
             scorers=weak,
             results_dir=tmp_path / "ab",
         )
@@ -317,7 +345,7 @@ class TestAbEngine:
                 v2,
                 registry=registry,
                 max_cost_usd=0.50,
-                graph=_FakeGraph(),
+                graph=_baseline(registry),
                 scorers=_arm_scorers(),
                 results_dir=tmp_path / "ab",
             )
@@ -330,7 +358,7 @@ class TestAbEngine:
             "generate_answer",
             v2,
             registry=registry,
-            graph=_FakeGraph(),
+            graph=_baseline(registry),
             scorers=_arm_scorers(),
             results_dir=tmp_path / "ab",
         )

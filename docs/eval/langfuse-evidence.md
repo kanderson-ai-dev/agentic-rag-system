@@ -37,3 +37,19 @@ the UI under **Experiments**, and public read APIs are
 - For the full evidence run (Phase 6/7): dataset `agentic-rag-system-eval-v<hash>`
   and experiment `agentic-rag-system-<prompt-version-tag>` via
   `evaluation/run_evaluation.py` with `TRACING_PROVIDER=langfuse`.
+
+## Phase 7 evidence — generate_answer v2 promotion (2026-10-12)
+
+Full-dataset experiment (18 items) on the promoted v2 prompts:
+
+- Dataset `agentic-rag-system-eval-v6ec2c719f9`, experiment
+  **`ga2-gd1-lj1-tq1-f964ae3-2026-10-12`** (prompt tag encodes
+  generate_answer v2, grade_documents v1, llm_judge v1, transform_query v1).
+- UI path: Datasets → `agentic-rag-system-eval-v6ec2c719f9` → experiment
+  `ga2-gd1-lj1-tq1-f964ae3-2026-10-12` → per-item evaluator scores.
+
+Measured A/B backing the promotion (committed):
+`evaluation/results/ab/0b2856ed2f27.json` — llm_as_judge 4.76 → 4.86,
+p95 latency 6758 ms → 4083 ms, all other metrics equal or better; the
+promotion gate initially blocked on a sign bug (lower-is-better metrics
+flagged as regressions) — fixed and re-evaluated to ALLOWED.

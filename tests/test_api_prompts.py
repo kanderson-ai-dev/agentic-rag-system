@@ -23,11 +23,18 @@ PASSWORD = "correct-horse-battery"
 PASSWORD_HASH = bcrypt.hashpw(PASSWORD.encode(), bcrypt.gensalt()).decode()
 
 _GOOD_SCORECARD = {
-    "faithfulness": 0.90,
-    "answer_relevancy": 0.91,
-    "context_precision": 0.80,
-    "context_recall": 0.82,
-    "llm_as_judge": 4.5,
+    # Must clear the committed v2 baseline's recorded evaluation (the gate
+    # regresses candidates against it): perfect quality, lower cost/latency.
+    "faithfulness": 1.0,
+    "answer_relevancy": 1.0,
+    "context_precision": 1.0,
+    "context_recall": 1.0,
+    "llm_as_judge": 5.0,
+    "injection_block_rate": 1.0,
+    "ood_refusal_rate": 1.0,
+    "cost_per_query_usd": 0.0005,
+    "latency_p50_ms": 1000,
+    "latency_p95_ms": 2000,
 }
 _REGRESSED_SCORECARD = {**_GOOD_SCORECARD, "faithfulness": 0.50}
 
@@ -124,7 +131,11 @@ class TestReadEndpoints:
             "transform_query",
             "llm_judge",
         }
-        assert all(p["active_version"] == 1 for p in body["prompts"])
+        expected_active = {"generate_answer": 2}
+        assert all(
+            p["active_version"] == expected_active.get(p["name"], 1)
+            for p in body["prompts"]
+        )
 
     def test_list_versions_hides_bodies(self, registry: PromptRegistry) -> None:
         with _client(_settings(jwt_secret_key=None)) as client:
@@ -132,10 +143,15 @@ class TestReadEndpoints:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["promoted_version"] == 1
-        assert body["versions"][0]["status"] == "promoted"
-        assert "system" not in body["versions"][0]
-        assert "human" not in body["versions"][0]
+        assert (
+            body["promoted_version"]
+            == registry.promoted("generate_answer").version
+        )
+        promoted_entry = next(
+            v for v in body["versions"] if v["status"] == "promoted"
+        )
+        assert "system" not in promoted_entry
+        assert "human" not in promoted_entry
 
     def test_get_version_returns_full_content(self, registry: PromptRegistry) -> None:
         with _client(_settings(jwt_secret_key=None)) as client:
@@ -219,7 +235,9 @@ class TestWriteProtection:
             )
 
         assert response.status_code == 201
-        assert response.json()["version"] == 2
+        assert response.json()["version"] == max(
+            v.version for v in registry.versions("generate_answer")
+        )
         assert response.json()["status"] == "candidate"
         entries = registry.audit_entries()
         assert entries[-1]["action"] == "create_candidate"
@@ -282,11 +300,13 @@ class TestAbTestEndpoints:
     ) -> None:
         settings = _settings(jwt_secret_key=None, prompt_registry_write_enabled=True)
         runner = lambda name, version: {"scorecard": _GOOD_SCORECARD}  # noqa: E731
-        registry.create_candidate("generate_answer", **_candidate_body())
+        candidate = registry.create_candidate(
+            "generate_answer", **_candidate_body()
+        ).version
         with _client(settings, tmp_path=tmp_path, runner=runner) as client:
             started = client.post(
                 "/api/v1/prompts/generate_answer/ab-test",
-                json={"candidate_version": 2},
+                json={"candidate_version": candidate},
             )
             assert started.status_code == 202
             job_id = started.json()["job_id"]
@@ -325,24 +345,31 @@ class TestAbTestEndpoints:
             "candidate_scorecard": _GOOD_SCORECARD,
             "meta": {"dataset_version": "abc123"},
         }
-        registry.create_candidate("generate_answer", **_candidate_body())
+        candidate = registry.create_candidate(
+            "generate_answer", **_candidate_body()
+        ).version
         with _client(settings, tmp_path=tmp_path, runner=runner) as client:
             job_id = client.post(
                 "/api/v1/prompts/generate_answer/ab-test",
-                json={"candidate_version": 2},
+                json={"candidate_version": candidate},
             ).json()["job_id"]
             assert _wait_for_job(client, job_id)["status"] == "succeeded"
 
             promoted = client.post(
                 "/api/v1/prompts/generate_answer/promote",
-                json={"version": 2, "evaluation": {"ab_test_id": job_id}},
+                json={
+                    "version": candidate,
+                    "evaluation": {"ab_test_id": job_id},
+                },
             )
 
         assert promoted.status_code == 200
         evaluation = registry.promoted("generate_answer").evaluation
         assert evaluation is not None
         assert evaluation.ab_test_id == job_id
-        assert evaluation.scorecard["faithfulness"] == pytest.approx(0.90)
+        assert (
+            evaluation.scorecard["faithfulness"] == _GOOD_SCORECARD["faithfulness"]
+        )
 
 
 class TestPromoteRollback:
@@ -355,16 +382,18 @@ class TestPromoteRollback:
         self, registry: PromptRegistry
     ) -> None:
         settings = _settings(jwt_secret_key=None, prompt_registry_write_enabled=True)
+        previous = registry.promoted("generate_answer").version
         with _client(settings) as client:
             created = client.post(
                 "/api/v1/prompts/generate_answer/candidates", json=_candidate_body()
             )
             assert created.status_code == 201
+            candidate = created.json()["version"]
 
             promoted = client.post(
                 "/api/v1/prompts/generate_answer/promote",
                 json={
-                    "version": 2,
+                    "version": candidate,
                     "evaluation": {
                         "dataset_version": "v1",
                         "scorecard": _GOOD_SCORECARD,
@@ -374,14 +403,14 @@ class TestPromoteRollback:
             )
             assert promoted.status_code == 200
             assert promoted.json()["status"] == "promoted"
-            assert registry.promoted("generate_answer").version == 2
+            assert registry.promoted("generate_answer").version == candidate
             assert (
                 registry.promoted("generate_answer").evaluation.ab_test_id == "job123"
             )
 
             rolled_back = client.post("/api/v1/prompts/generate_answer/rollback")
             assert rolled_back.status_code == 200
-            assert registry.promoted("generate_answer").version == 1
+            assert registry.promoted("generate_answer").version == previous
 
         actions = [e["action"] for e in registry.audit_entries()]
         assert actions[-3:] == ["create_candidate", "promote", "rollback"]
@@ -389,10 +418,11 @@ class TestPromoteRollback:
 
     def test_promote_without_evidence_409(self, registry: PromptRegistry) -> None:
         settings = _settings(jwt_secret_key=None, prompt_registry_write_enabled=True)
-        self._create_candidate(registry)
+        candidate = self._create_candidate(registry)
         with _client(settings) as client:
             response = client.post(
-                "/api/v1/prompts/generate_answer/promote", json={"version": 2}
+                "/api/v1/prompts/generate_answer/promote",
+                json={"version": candidate},
             )
 
         assert response.status_code == 409
@@ -402,12 +432,12 @@ class TestPromoteRollback:
         self, registry: PromptRegistry
     ) -> None:
         settings = _settings(jwt_secret_key=None, prompt_registry_write_enabled=True)
-        self._create_candidate(registry)
+        candidate = self._create_candidate(registry)
         with _client(settings) as client:
             response = client.post(
                 "/api/v1/prompts/generate_answer/promote",
                 json={
-                    "version": 2,
+                    "version": candidate,
                     "evaluation": {"scorecard": _REGRESSED_SCORECARD},
                 },
             )
@@ -455,6 +485,7 @@ class TestPromoteRollback:
     def test_rollback_without_superseded_409(self, registry: PromptRegistry) -> None:
         settings = _settings(jwt_secret_key=None, prompt_registry_write_enabled=True)
         with _client(settings) as client:
-            response = client.post("/api/v1/prompts/generate_answer/rollback")
+            # grade_documents has never been superseded.
+            response = client.post("/api/v1/prompts/grade_documents/rollback")
 
         assert response.status_code == 409

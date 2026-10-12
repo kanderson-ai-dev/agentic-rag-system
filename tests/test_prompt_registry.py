@@ -83,8 +83,13 @@ _VARIABLE_INPUTS = {"documents": "DOCS", "context": "CTX", "question": "Q"}
 
 @pytest.fixture
 def registry(tmp_path: Path) -> PromptRegistry:
-    """A writable registry on a tmp dir seeded with the committed prompts."""
+    """A writable registry on a tmp dir seeded with the committed prompts.
+
+    The committed audit log is dropped — each test starts a clean chain so
+    entry-order assertions stay deterministic as real promotions accumulate.
+    """
     shutil.copytree(_REPO_PROMPTS, tmp_path / "prompts")
+    (tmp_path / "prompts" / "AUDIT.jsonl").unlink(missing_ok=True)
     return PromptRegistry(tmp_path / "prompts")
 
 
@@ -130,19 +135,41 @@ class TestGoldenPromptFiles:
 
     def test_registry_loads_committed_prompts(self) -> None:
         registry = PromptRegistry(_REPO_PROMPTS)
+        promoted_versions = {name: 1 for name in PromptName}
+        # generate_answer v2 was promoted after a measured A/B (iteration-1).
+        promoted_versions[PromptName.GENERATE_ANSWER] = 2
         for name in PromptName:
-            assert registry.promoted(name).version == 1
+            assert registry.promoted(name).version == promoted_versions[name]
+
+    def test_committed_audit_chain_verifies(self) -> None:
+        """The real registry's hash-chained audit log must stay intact."""
+        assert PromptRegistry(_REPO_PROMPTS).verify_chain() is True
+
+    def test_promoted_v2_renders_new_contract(self) -> None:
+        """Golden for the promoted v2: the completeness-over-brevity wording."""
+        rendered = prompts_facade.get_prompt("generate_answer").invoke(
+            _VARIABLE_INPUTS
+        ).to_messages()
+        assert "Cover every distinct concept" in rendered[0].content
+        assert "max three sentences" not in rendered[0].content
+        assert rendered[1].content == "Context:\n\nCTX\n\nQuestion: Q"
 
 
 class TestLifecycle:
     def test_candidate_gets_next_integer_version(self, registry: PromptRegistry) -> None:
+        previous_max = max(
+            v.version for v in registry.versions(PromptName.GENERATE_ANSWER)
+        )
         candidate = _candidate(
             registry, PromptName.GENERATE_ANSWER, "New grading rubric {context} {question}"
         )
-        assert candidate == 2
-        assert registry.get("generate_answer", 2).status.value == "candidate"
+        assert candidate == previous_max + 1
+        assert (
+            registry.get("generate_answer", candidate).status.value == "candidate"
+        )
 
     def test_promote_supersedes_previous_promoted(self, registry: PromptRegistry) -> None:
+        previous = registry.promoted("generate_answer").version
         version = _candidate(
             registry,
             PromptName.GENERATE_ANSWER,
@@ -150,15 +177,18 @@ class TestLifecycle:
         )
         registry.promote("generate_answer", version, actor="tester")
 
-        assert registry.promoted("generate_answer").version == 2
-        assert registry.get("generate_answer", 1).status.value == "superseded"
-        assert "generate_answer@2" in registry.version_token
+        assert registry.promoted("generate_answer").version == version
+        assert (
+            registry.get("generate_answer", previous).status.value == "superseded"
+        )
+        assert f"generate_answer@{version}" in registry.version_token
 
     def test_promote_rejects_non_candidate(self, registry: PromptRegistry) -> None:
         with pytest.raises(LifecycleError):
             registry.promote("generate_answer", 1, actor="tester")
 
     def test_rollback_repromotes_superseded(self, registry: PromptRegistry) -> None:
+        previous = registry.promoted("generate_answer").version
         version = _candidate(
             registry,
             PromptName.GENERATE_ANSWER,
@@ -167,14 +197,19 @@ class TestLifecycle:
         registry.promote("generate_answer", version, actor="tester")
         rolled_back_to = registry.rollback("generate_answer", actor="tester")
 
-        assert rolled_back_to.version == 1
-        assert registry.promoted("generate_answer").version == 1
-        assert registry.get("generate_answer", 1).status.value == "promoted"
-        assert registry.get("generate_answer", 2).status.value == "rolled_back"
+        assert rolled_back_to.version == previous
+        assert registry.promoted("generate_answer").version == previous
+        assert (
+            registry.get("generate_answer", previous).status.value == "promoted"
+        )
+        assert (
+            registry.get("generate_answer", version).status.value == "rolled_back"
+        )
 
     def test_rollback_without_superseded_fails(self, registry: PromptRegistry) -> None:
+        # grade_documents has never been superseded — nothing to roll back to.
         with pytest.raises(LifecycleError):
-            registry.rollback("generate_answer", actor="tester")
+            registry.rollback("grade_documents", actor="tester")
 
     def test_forbidden_transition_rejected(self, registry: PromptRegistry) -> None:
         # draft -> promoted is not an allowed edge.

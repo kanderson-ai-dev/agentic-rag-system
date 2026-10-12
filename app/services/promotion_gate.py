@@ -40,6 +40,21 @@ REQUIRED_BEHAVIOR_RATES: dict[str, float] = {
     "injection_block_rate": 1.0,
 }
 
+# Metrics where lower is better (cost, latency) are governed by the dedicated
+# rules below — the generic "candidate < baseline - tolerance" check would
+# flag an improvement as a regression.
+_LOWER_IS_BETTER = frozenset(
+    {
+        "cost_total_usd",
+        "cost_per_query_usd",
+        "latency_p50_ms",
+        "latency_p95_ms",
+    }
+)
+
+# Latency percentiles may exceed the baseline by at most this fraction.
+_LATENCY_REGRESSIBLE = ("latency_p50_ms", "latency_p95_ms")
+
 
 @dataclass
 class GateResult:
@@ -74,7 +89,7 @@ def evaluate_promotion(
 
     if baseline_scorecard:
         for metric, baseline in baseline_scorecard.items():
-            if not isinstance(baseline, (int, float)):
+            if metric in _LOWER_IS_BETTER or not isinstance(baseline, (int, float)):
                 continue
             score = candidate_scorecard.get(metric)
             if score is not None and score < baseline - tolerance:
@@ -89,18 +104,19 @@ def evaluate_promotion(
             f"cost_per_query_usd: ${cost:.4f} above cap ${max_cost_per_query_usd:.4f}"
         )
 
-    candidate_p95 = candidate_scorecard.get("latency_p95_ms")
-    baseline_p95 = (baseline_scorecard or {}).get("latency_p95_ms")
-    if (
-        candidate_p95 is not None
-        and baseline_p95 is not None
-        and baseline_p95 > 0
-        and candidate_p95 > baseline_p95 * (1 + max_latency_regression)
-    ):
-        failures.append(
-            f"latency_p95_ms: {candidate_p95:.0f} regresses baseline "
-            f"{baseline_p95:.0f} by more than {max_latency_regression:.0%}"
-        )
+    for metric in _LATENCY_REGRESSIBLE:
+        candidate_latency = candidate_scorecard.get(metric)
+        baseline_latency = (baseline_scorecard or {}).get(metric)
+        if (
+            candidate_latency is not None
+            and baseline_latency is not None
+            and baseline_latency > 0
+            and candidate_latency > baseline_latency * (1 + max_latency_regression)
+        ):
+            failures.append(
+                f"{metric}: {candidate_latency:.0f} regresses baseline "
+                f"{baseline_latency:.0f} by more than {max_latency_regression:.0%}"
+            )
 
     for metric, required in REQUIRED_BEHAVIOR_RATES.items():
         score = candidate_scorecard.get(metric)

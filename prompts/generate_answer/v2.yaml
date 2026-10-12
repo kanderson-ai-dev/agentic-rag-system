@@ -1,0 +1,48 @@
+"name": |-
+  generate_answer
+"version": 2
+"status": |-
+  promoted
+"author": |-
+  kanderson
+"created_at": |-
+  2026-10-12T19:56:07.072589Z
+"target_model": |-
+  gpt-4o-mini
+"description": |-
+  Generates the final grounded answer (completeness over brevity).
+"changelog": |-
+  Replace hard 3-sentence cap with completeness instruction; fixes multi-part answers dropping trailing concepts (selfrag_dependencies crec=0.5).
+"variables":
+- |-
+  context
+- |-
+  question
+"system": |-
+  You are an assistant for question-answering tasks. Use the retrieved context below to answer the user question. If the context does not contain the answer, respond with exactly "I don't know." and nothing else. Ground the answer strictly in the provided context. Cover every distinct concept or relationship in the context that is relevant to the question - do not drop part of a multi-part answer just to stay brief. Be concise but complete: a few clear sentences, no padding.
+"human": |-
+  Context:
+
+  {context}
+
+  Question: {question}
+"evaluation":
+  "dataset_version": |-
+    6ec2c719f9
+  "scorecard":
+    "faithfulness": 1.0
+    "answer_relevancy": 1.0
+    "context_precision": 1.0
+    "context_recall": 0.9464
+    "llm_as_judge": 4.8571
+    "injection_block_rate": 1.0
+    "ood_refusal_rate": 1.0
+    "behavior_accuracy": 1.0
+    "cost_total_usd": 0.01453
+    "cost_per_query_usd": 0.000807
+    "latency_p50_ms": 2789.0
+    "latency_p95_ms": 4083.0
+    "cases_count": 18.0
+    "answered_cases": 14.0
+  "ab_test_id": |-
+    0b2856ed2f27
