@@ -26,13 +26,13 @@ checklist for closing out each phase.
 
 | Risk | Mitigation | Where |
 |---|---|---|
-| LLM01 Prompt Injection | Input guardrail | `app/graph/guardrails.py` |
+| LLM01 Prompt Injection | Input guardrail; prompt mutations gated behind JWT + `PROMPT_REGISTRY_WRITE_ENABLED` and rate-limited | `app/graph/guardrails.py`, `app/api/v1/routes/prompts.py` |
 | LLM02 Insecure Output Handling | Output guardrail | `app/graph/guardrails.py` |
-| LLM03 Training Data Poisoning | N/A (model is not re-trained) | documented |
+| LLM03 Training Data Poisoning | Model not re-trained; prompt artifact integrity via hash-chained audit log on every registry mutation | `app/services/prompt_registry.py` |
 | LLM04 Model DoS | Input length limit, bounded `top_k` | `app/graph/guardrails.py`, `app/services/vector_store.py` |
 | LLM05 Supply Chain Vulnerabilities | `pip-audit`, pinned versions | CI |
 | LLM06 Sensitive Information Disclosure | Log redaction, `usage_store` without conversation content | `app/core/logging.py`, `app/services/usage_store.py` |
-| LLM07 Insecure Plugin Design | Parameterized Cypher, explicit input validation | `app/services/graph_store.py` |
+| LLM07 Insecure Plugin Design | Parameterized Cypher, explicit input validation; prompt-leak protection — promotions require metric evidence, prompt bodies excluded from list views | `app/services/graph_store.py`, `app/api/v1/routes/prompts.py` |
 | LLM08 Excessive Agency | HITL before accepting low-confidence answers | `app/graph/nodes.py` |
 | LLM09 Overreliance | LLM-as-judge + real evaluation | `evaluation/` |
 | LLM10 Model Theft | N/A (model consumed via API) | documented |

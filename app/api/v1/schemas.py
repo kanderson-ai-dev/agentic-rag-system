@@ -2,10 +2,16 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import get_settings
 from app.graph.prompts import REFUSAL_TEXT
+
+# The closed set of prompt names — `Literal` on path params makes FastAPI
+# answer 422 (not a file lookup) for anything else, including `../` names.
+PromptNameParam = Literal[
+    "grade_documents", "generate_answer", "transform_query", "llm_judge"
+]
 
 
 class QueryRequest(BaseModel):
@@ -112,3 +118,43 @@ class AuthStatusResponse(BaseModel):
     """
 
     auth_required: bool
+
+
+class CandidateCreateRequest(BaseModel):
+    """Request body for `POST /api/v1/prompts/{name}/candidates`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    system: str = Field(min_length=1, max_length=32_000)
+    human: str | None = Field(default=None, max_length=32_000)
+    author: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=500)
+    changelog: str = Field(min_length=1, max_length=500)
+    target_model: str | None = Field(default=None, max_length=100)
+
+
+class AbTestCreateRequest(BaseModel):
+    """Request body for `POST /api/v1/prompts/{name}/ab-test`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_version: int = Field(ge=1)
+
+
+class PromptEvaluationBody(BaseModel):
+    """A/B evidence attached to a promotion decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dataset_version: str | None = None
+    scorecard: dict[str, float] = Field(default_factory=dict)
+    ab_test_id: str | None = None
+
+
+class PromoteRequest(BaseModel):
+    """Request body for `POST /api/v1/prompts/{name}/promote`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    evaluation: PromptEvaluationBody | None = None

@@ -70,6 +70,9 @@ class Settings(BaseSettings):
 
     # --- Prompt registry (versioned prompt artifacts) ---
     prompts_dir: str = "prompts"
+    # Escape hatch for open (unauthenticated) deployments: when no JWT secret
+    # is configured, registry mutations are refused unless this is true.
+    prompt_registry_write_enabled: bool = False
 
     # --- Checkpointing (required for human-in-the-loop interrupts) ---
     checkpoint_db_path: str = "data/checkpoints.sqlite"

@@ -15,8 +15,12 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.core.config import Settings, get_settings
 from app.core.security import decode_access_token
+from app.services.ab_test_jobs import AbTestJobManager, AbTestRunner, default_ab_test_runner
+from app.services.prompt_registry import PromptRegistry
 
 _bearer = HTTPBearer(auto_error=False)
+
+_ab_test_manager: AbTestJobManager | None = None
 
 
 def get_session_id(x_session_id: str | None = Header(default=None)) -> str | None:
@@ -64,3 +68,52 @@ def verify_jwt(
         return decode_access_token(settings, credentials.credentials)
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
+
+
+def require_prompt_write(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    settings: Settings = Depends(get_settings),
+) -> str:
+    """Actor allowed to mutate the prompt registry, else 401/403.
+
+    Registry writes are a prompt-tampering surface (OWASP LLM01/LLM03/LLM07):
+    a valid JWT is required whenever auth is configured, and without auth
+    (open quickstart) writes are refused unless the operator explicitly sets
+    `PROMPT_REGISTRY_WRITE_ENABLED=true`. Returns the actor recorded in the
+    audit chain — the JWT subject, or "local" in the open+enabled case.
+    """
+    if settings.jwt_secret_key:
+        if credentials is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            payload = decode_access_token(settings, credentials.credentials)
+        except jwt.PyJWTError as exc:
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired token"
+            ) from exc
+        return str(payload.get("sub", "unknown"))
+    if not settings.prompt_registry_write_enabled:
+        raise HTTPException(
+            status_code=403, detail="Prompt registry writes are disabled"
+        )
+    return "local"
+
+
+def get_prompt_registry() -> PromptRegistry:
+    """Return the process-wide prompt registry (see `app.graph.prompts`)."""
+    from app.graph.prompts import get_registry
+
+    return get_registry()
+
+
+def get_ab_test_manager() -> AbTestJobManager:
+    """Return the process-wide single-flight A/B job manager."""
+    global _ab_test_manager
+    if _ab_test_manager is None:
+        _ab_test_manager = AbTestJobManager()
+    return _ab_test_manager
+
+
+def get_ab_test_runner() -> AbTestRunner:
+    """Return the evaluation engine the A/B job delegates to."""
+    return default_ab_test_runner
