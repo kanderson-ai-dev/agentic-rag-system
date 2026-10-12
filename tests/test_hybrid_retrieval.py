@@ -90,3 +90,57 @@ class TestHybridRetrieveNode:
         assert len(result["documents"]) == 2
         assert result["documents"][0] == RELEVANT_DOC
         assert result["documents"][1].metadata["source"] == "graph"
+
+
+class TestRetrievalModeIsolation:
+    """Each mode must touch only its own backend — the baseline numbers are
+    meaningless if a "vector_only" arm secretly queries the graph store."""
+
+    def _recording_backends(self):
+        calls = {"vector": 0, "graph": 0}
+
+        class _RecordingRetriever:
+            def invoke(self, _q: str) -> list[Document]:
+                calls["vector"] += 1
+                return [RELEVANT_DOC]
+
+        def _graph_search(_q: str) -> list[Document]:
+            calls["graph"] += 1
+            return [Document(page_content="graph doc", metadata={"source": "g"})]
+
+        return calls, _RecordingRetriever(), _graph_search
+
+    def test_hybrid_calls_both_backends(self) -> None:
+        calls, retriever, graph_search = self._recording_backends()
+        node = make_hybrid_retrieve_node(
+            retriever, graph_search, retrieval_mode="hybrid"
+        )
+        result = node(_state())
+        assert calls == {"vector": 1, "graph": 1}
+        assert len(result["documents"]) == 2
+
+    def test_vector_only_never_touches_graph(self) -> None:
+        calls, retriever, graph_search = self._recording_backends()
+        node = make_hybrid_retrieve_node(
+            retriever, graph_search, retrieval_mode="vector_only"
+        )
+        result = node(_state())
+        assert calls == {"vector": 1, "graph": 0}
+        assert result["documents"] == [RELEVANT_DOC]
+
+    def test_graph_only_never_touches_vector(self) -> None:
+        calls, retriever, graph_search = self._recording_backends()
+        node = make_hybrid_retrieve_node(
+            retriever, graph_search, retrieval_mode="graph_only"
+        )
+        result = node(_state())
+        assert calls == {"vector": 0, "graph": 1}
+        assert len(result["documents"]) == 1
+
+    def test_no_retrieval_calls_neither_backend(self) -> None:
+        calls, retriever, graph_search = self._recording_backends()
+        node = make_hybrid_retrieve_node(
+            retriever, graph_search, retrieval_mode="no_retrieval"
+        )
+        assert node(_state()) == {"documents": []}
+        assert calls == {"vector": 0, "graph": 0}

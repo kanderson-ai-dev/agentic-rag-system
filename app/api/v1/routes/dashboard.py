@@ -14,6 +14,12 @@ router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 _SCORECARD_PATH = (
     Path(__file__).resolve().parents[4] / "evaluation" / "results" / "ragas_scorecard.json"
 )
+_BASELINE_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "evaluation"
+    / "results"
+    / "baseline_comparison.json"
+)
 
 
 def _get_usage_store(request: Request) -> UsageStore:
@@ -72,8 +78,35 @@ def quality() -> dict[str, Any]:
         }
         for name, threshold in _QUALITY_THRESHOLDS.items()
     }
-    return {
+    response: dict[str, Any] = {
         "available": True,
         "generated_at": scorecard.get("generated_at"),
         "metrics": metrics,
     }
+    # Retrieval-mode comparison lands here once `run_baseline.py` has run —
+    # the headline metrics per mode, not the full per-case detail.
+    if _BASELINE_PATH.exists():
+        comparison = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
+        keys = (
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
+            "llm_as_judge",
+            "behavior_accuracy",
+            "cost_per_query_usd",
+            "latency_p50_ms",
+            "latency_p95_ms",
+        )
+        response["baseline_comparison"] = {
+            "generated_at": comparison.get("meta", {}).get("generated_at"),
+            "modes": {
+                mode: {key: card.get(key) for key in keys}
+                for mode, card in comparison.get("modes", {}).items()
+            },
+            "multi_hop": {
+                mode: card.get("per_category", {}).get("multi_hop")
+                for mode, card in comparison.get("modes", {}).items()
+            },
+        }
+    return response

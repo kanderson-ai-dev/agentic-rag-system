@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     max_retries: int = 2
     retriever_top_k: int = 4
     max_question_chars: int = DEFAULT_MAX_QUESTION_CHARS
+    # Retrieval backend combination baked into the graph at build time.
+    # Config/evaluation-only — deliberately not a request parameter: callers
+    # cannot weaken retrieval per query. `no_retrieval` never reaches the
+    # graph (the eval harness drives a bare-LLM chain for that baseline).
+    retrieval_mode: Literal["hybrid", "vector_only", "graph_only", "no_retrieval"] = (
+        "hybrid"
+    )
 
     # --- Prompt registry (versioned prompt artifacts) ---
     prompts_dir: str = "prompts"

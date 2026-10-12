@@ -58,6 +58,7 @@ def build_graph(
     checkpointer: BaseCheckpointSaver[Any],
     max_retries: int = 2,
     max_question_chars: int = DEFAULT_MAX_QUESTION_CHARS,
+    retrieval_mode: str = "hybrid",
     vector_backend: str = "vector",
     graph_backend: str = "graph",
 ) -> CompiledStateGraph[Any, None, Any, Any]:
@@ -71,6 +72,7 @@ def build_graph(
         make_hybrid_retrieve_node(
             retriever,
             graph_search_fn,
+            retrieval_mode=retrieval_mode,
             vector_backend=vector_backend,
             graph_backend=graph_backend,
         ),
@@ -138,6 +140,7 @@ def warmup_backends(
     retriever: Invokable,
     graph_search_fn: Callable[[str], list[Document]],
     llm: BaseChatModel,
+    retrieval_mode: str = "hybrid",
 ) -> None:
     """Pre-open backend connections in a daemon thread at startup.
 
@@ -149,14 +152,16 @@ def warmup_backends(
     """
 
     def _run() -> None:
-        calls = (
-            lambda: retriever.invoke("warmup"),
-            lambda: graph_search_fn("warmup"),
+        calls: list[Callable[[], Any]] = [
             lambda: llm.invoke(
                 "ping",
                 config={"tags": ["warmup"], "metadata": {"purpose": "connection-warmup"}},
             ),
-        )
+        ]
+        if retrieval_mode in ("hybrid", "vector_only"):
+            calls.append(lambda: retriever.invoke("warmup"))
+        if retrieval_mode in ("hybrid", "graph_only"):
+            calls.append(lambda: graph_search_fn("warmup"))
         with ThreadPoolExecutor(max_workers=len(calls)) as pool:
             futures = [pool.submit(call) for call in calls]
             for future in futures:
@@ -194,7 +199,7 @@ def build_default_graph(
 
     retriever = vector_store_service.as_retriever(top_k=settings.retriever_top_k)
     graph_search_fn = graph_store_service.graph_search
-    warmup_backends(retriever, graph_search_fn, llm)
+    warmup_backends(retriever, graph_search_fn, llm, settings.retrieval_mode)
 
     return build_graph(
         retriever=retriever,
@@ -205,6 +210,7 @@ def build_default_graph(
         checkpointer=checkpointer,
         max_retries=settings.max_retries,
         max_question_chars=settings.max_question_chars,
+        retrieval_mode=settings.retrieval_mode,
         vector_backend=vector_store_service.backend,
         graph_backend=graph_store_service.backend,
     )

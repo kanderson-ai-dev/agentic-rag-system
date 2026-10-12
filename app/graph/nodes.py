@@ -124,14 +124,20 @@ def make_hybrid_retrieve_node(
     retriever: Invokable,
     graph_search_fn: Callable[[str], list[Document]],
     *,
+    retrieval_mode: str = "hybrid",
     vector_backend: str = "vector",
     graph_backend: str = "graph",
 ) -> NodeFn:
-    """Retrieve documents from both the vector store and the graph store.
+    """Retrieve documents from the configured backend combination.
 
     ``graph_search_fn`` is a callable `(term: str) -> list[Document]` provided
     by the graph store service (Neo4j or NetworkX). Combined results are merged
     into ``documents`` with per-document ``source``/``backend`` metadata.
+
+    ``retrieval_mode`` selects the arms: ``hybrid`` (both), ``vector_only`` or
+    ``graph_only``. ``no_retrieval`` returns an empty set — the evaluation
+    baseline drives that mode through a bare-LLM chain, so it should never
+    reach this node in production.
 
     The vector and graph queries are independent I/O calls to different
     backends, so they run concurrently in a thread pool instead of back to
@@ -139,18 +145,32 @@ def make_hybrid_retrieve_node(
     trips, not CPU), which matters most when the graph backend is a Neo4j
     Aura free-tier instance waking up from sleep.
     """
+    use_vector = retrieval_mode in ("hybrid", "vector_only")
+    use_graph = retrieval_mode in ("hybrid", "graph_only")
 
     @timed_node("retrieve")
     def retrieve_node(state: GraphState) -> dict[str, Any]:
         question = state["question"]
+        if not use_vector and not use_graph:
+            return {"documents": []}
         # Not a `with` block: on timeout the loser keeps running in the
         # background while the winner's results proceed (shutdown(wait=False)).
         executor = ThreadPoolExecutor(max_workers=2)
         try:
-            vector_future = executor.submit(retriever.invoke, question)
-            graph_future = executor.submit(graph_search_fn, question)
-            documents = _result_or_empty_on_timeout(vector_future, vector_backend)
-            documents.extend(_result_or_empty_on_timeout(graph_future, graph_backend))
+            # Submit both arms first so they run concurrently; only then wait.
+            vector_future = (
+                executor.submit(retriever.invoke, question) if use_vector else None
+            )
+            graph_future = (
+                executor.submit(graph_search_fn, question) if use_graph else None
+            )
+            documents: list[Document] = []
+            if vector_future is not None:
+                documents = _result_or_empty_on_timeout(vector_future, vector_backend)
+            if graph_future is not None:
+                documents.extend(
+                    _result_or_empty_on_timeout(graph_future, graph_backend)
+                )
         finally:
             executor.shutdown(wait=False)
         return {"documents": _dedupe_documents(documents)}
