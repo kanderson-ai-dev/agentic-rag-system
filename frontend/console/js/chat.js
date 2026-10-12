@@ -5,6 +5,7 @@
 import { $ } from "/js/util.js";
 import { api } from "/js/api.js";
 import { renderMarkdown } from "/js/markdown.js";
+import { label } from "/js/labels.js";
 import { announce } from "./toast.js";
 
 // The current thread id, set after a query; needed by the review flow to
@@ -29,7 +30,7 @@ export function wireChat({ openReview, refreshDashboard }) {
 // Build (or locate) the assistant message row and render `markdown` into the
 // `.message-body` slot using the XSS-safe renderer, then attach source chips
 // and a copy button.
-function addAssistantMessage(markdown, sources = []) {
+function addAssistantMessage(markdown, sources = [], promptVersions = {}) {
   const message = createMessage("assistant");
 
   const meta = document.createElement("div");
@@ -63,6 +64,14 @@ function addAssistantMessage(markdown, sources = []) {
       sourceRow.appendChild(chip);
     });
     message.appendChild(sourceRow);
+  }
+
+  const gaVersion = promptVersions?.generate_answer;
+  if (gaVersion) {
+    const footer = document.createElement("p");
+    footer.className = "prompt-version-note muted small";
+    footer.textContent = `Answered with ${label("prompt", "generate_answer")} v${gaVersion}`;
+    message.appendChild(footer);
   }
 
   $("#messages").appendChild(message);
@@ -223,7 +232,11 @@ async function sendQuestion(question) {
       );
       onDashboardRefresh?.();
     } else {
-      addAssistantMessage(result.answer || "(no answer)", result.sources || []);
+      addAssistantMessage(
+        result.answer || "(no answer)",
+        result.sources || [],
+        result.prompt_versions || {}
+      );
       announce("Answer received.");
       onDashboardRefresh?.();
     }

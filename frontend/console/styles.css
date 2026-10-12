@@ -1456,3 +1456,180 @@ dialog h2 {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --- Prompt registry (Phase 10) ------------------------------------------- */
+
+.prompt-chain {
+  font-weight: 600;
+}
+
+.prompt-chain.ok {
+  color: var(--success);
+}
+
+.prompt-chain.bad {
+  color: var(--danger);
+}
+
+.prompts-auth-fields {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 320px;
+  margin-bottom: var(--space-4);
+}
+
+.prompt-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  text-align: left;
+  color: var(--text);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.prompt-row:hover {
+  border-color: var(--accent);
+}
+
+.prompt-row-name {
+  font-weight: 600;
+}
+
+.prompt-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.prompt-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.prompt-versions {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.prompt-version {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.prompt-version-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.prompt-version-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.prompt-diff-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.diff-select {
+  padding: 4px var(--space-2);
+  color: var(--text);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-sm);
+}
+
+.diff-table td {
+  padding: 2px var(--space-2);
+  vertical-align: top;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-marker {
+  width: 2ch;
+  font-weight: 700;
+  text-align: center;
+}
+
+.diff-lines {
+  width: 7ch;
+  font-size: var(--text-xs);
+}
+
+.diff-add {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.diff-add .diff-marker {
+  color: var(--success);
+}
+
+.diff-del {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.diff-del .diff-marker {
+  color: var(--danger);
+}
+
+.ab-table {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.ab-table th,
+.ab-table td {
+  padding: var(--space-2);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.ab-verdict {
+  margin-top: var(--space-3);
+  font-weight: 600;
+}
+
+.ab-verdict.ok {
+  color: var(--success);
+}
+
+.ab-verdict.bad {
+  color: var(--danger);
+}
+
+.btn.small {
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.prompt-version-note {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+}

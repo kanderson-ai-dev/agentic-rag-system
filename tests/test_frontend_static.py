@@ -27,9 +27,11 @@ JS_MODULES = [
     "/console/js/toast.js",
     "/js/markdown.js",
     "/js/api.js",
+    "/js/labels.js",
     "/console/js/chat.js",
     "/console/js/review.js",
     "/console/js/dashboard.js",
+    "/console/js/prompts.js",
 ]
 
 LANDING_MODULES = [
@@ -237,20 +239,24 @@ def test_no_login_gate_chat_and_dashboard_are_immediately_visible() -> None:
     client = TestClient(app)
     html = client.get("/console/").text
     js = read_js(client)
+    chat_src = client.get("/console/js/chat.js").text
+    dashboard_src = client.get("/console/js/dashboard.js").text
     client.close()
 
     # No login markup at all.
     assert 'id="login-panel"' not in html
     assert 'id="login-form"' not in html
-    assert "Sign in" not in html
+    assert "Sign in to continue" not in html
 
     # Chat and dashboard are visible without any prior auth step.
     assert '<section id="chat-panel" class="card">' in html
     assert '<section id="dashboard-panel" class="card">' in html
 
-    # No client-side auth gate/login flow remains.
-    assert "auth/status" not in js
-    assert "auth/login" not in js
+    # The Prompts section holds a writes-only sign-in (JWT protects prompt
+    # mutations, never the read path) — but nothing may *gate* the UI on it.
+    assert "/js/labels.js" in js and "initPrompts" in js
+    assert "auth/login" not in chat_src
+    assert "auth/login" not in dashboard_src
 
 
 def test_chat_phase4_xss_safe_markdown_rendering() -> None:

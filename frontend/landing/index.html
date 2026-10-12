@@ -67,6 +67,8 @@
           id="question"
           rows="1"
           required
+          maxlength="1200"
+          aria-describedby="char-count"
           placeholder="e.g. How does the Self-RAG correction loop work?"
           class="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-base leading-relaxed text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
         ></textarea>
@@ -78,8 +80,9 @@
           Ask
         </button>
       </div>
-      <p class="mt-2 px-1 text-xs text-neutral-500">
-        Enter to send · Shift+Enter for a new line
+      <p class="mt-2 flex items-center justify-between px-1 text-xs text-neutral-500">
+        <span>Enter to send · Shift+Enter for a new line</span>
+        <span id="char-count" aria-live="polite">0/1000</span>
       </p>
     </form>
 

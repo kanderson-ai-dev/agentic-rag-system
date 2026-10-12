@@ -10,6 +10,7 @@
 
 import { $ } from "/js/util.js";
 import { api } from "/js/api.js";
+import { label } from "/js/labels.js";
 import { addAssistantMessage, getThreadId } from "./chat.js";
 import { announce, showToast } from "./toast.js";
 
@@ -97,6 +98,9 @@ function openReviewModal(interrupt) {
   lastFocusedElement = document.activeElement;
 
   $("#review-question").textContent = interrupt.question || "(no question)";
+  $("#review-reason").textContent = interrupt.reason
+    ? `Reason: ${label("interrupt_reason", interrupt.reason)}`
+    : "";
   const docs = (interrupt.best_documents || []).slice(0, 2).join("\n\n");
   $("#review-docs").textContent =
     docs || "(no retrieved documents available)";
@@ -153,7 +157,11 @@ async function submitReview(decision) {
     if (result.status === "interrupted") {
       openReviewModal(result.interrupt);
     } else {
-      addAssistantMessage(result.answer || "(no answer)", result.sources || []);
+      addAssistantMessage(
+        result.answer || "(no answer)",
+        result.sources || [],
+        result.prompt_versions || {}
+      );
       announce("Answer received.");
       onDashboardRefresh?.();
     }

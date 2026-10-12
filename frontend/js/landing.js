@@ -11,6 +11,9 @@ import { api } from "./api.js";
 import { renderMarkdown } from "./markdown.js";
 
 const MAX_TEXTAREA_HEIGHT = 160; // px — same cap as the console composer
+// Mirrors the server-side `MAX_QUESTION_CHARS` guardrail — blocking here
+// saves a round-trip and never spends tokens on oversized input.
+const MAX_QUESTION_CHARS = 1000;
 
 // Busy state is module-scoped; the submit handler reads it so a double-submit
 // can never fire two in-flight queries.
@@ -80,7 +83,7 @@ function renderEscalation() {
   box.className =
     "rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-relaxed text-amber-200/90";
   box.textContent =
-    "This question needs a second look — the automated checks could not resolve it confidently.";
+    "I couldn't find a reliable answer — this was sent for human review.";
 
   const link = document.createElement("a");
   link.href = "/console";
@@ -174,14 +177,23 @@ async function ask(question) {
   }
 }
 
+function updateCounter() {
+  const textarea = $("#question");
+  const counter = $("#char-count");
+  const length = textarea.value.length;
+  counter.textContent = `${length}/${MAX_QUESTION_CHARS}`;
+  counter.classList.toggle("text-amber-400", length > MAX_QUESTION_CHARS);
+}
+
 function init() {
   const textarea = $("#question");
   const form = $("#ask-form");
 
-  // Grow the textarea up to a max height as content wraps.
+  // Grow the textarea up to a max height as content wraps + live counter.
   textarea.addEventListener("input", () => {
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
+    updateCounter();
   });
 
   // The question field is a <textarea> (so Shift+Enter can add a newline),
@@ -198,8 +210,16 @@ function init() {
     event.preventDefault();
     const question = textarea.value.trim();
     if (!question) return;
+    if (question.length > MAX_QUESTION_CHARS) {
+      renderNotice(
+        `That question is ${question.length} characters — the limit is ${MAX_QUESTION_CHARS}. Please shorten it and try again.`,
+        null
+      );
+      return;
+    }
     textarea.value = "";
     textarea.style.height = "auto";
+    updateCounter();
     ask(question);
   });
 }

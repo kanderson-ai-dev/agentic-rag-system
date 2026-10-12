@@ -546,6 +546,10 @@ function renderRecentTable() {
       td.textContent = text;
       tr.appendChild(td);
     }
+    const tdPrompt = document.createElement("td");
+    const gaVersion = row.prompt_versions?.generate_answer;
+    tdPrompt.textContent = gaVersion ? `v${gaVersion}` : "—";
+    tr.appendChild(tdPrompt);
     const tdStatus = document.createElement("td");
     const pill = document.createElement("span");
     pill.className = `status-pill ${status}`;

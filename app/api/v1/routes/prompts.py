@@ -21,6 +21,7 @@ from app.api.v1.schemas import (
     PromoteRequest,
     PromptNameParam,
 )
+from app.core.config import get_settings
 from app.core.dependencies import (
     get_ab_test_manager,
     get_ab_test_runner,
@@ -80,10 +81,20 @@ def _version_public(version: dict[str, Any]) -> dict[str, Any]:
 def list_prompts(
     registry: PromptRegistry = Depends(get_prompt_registry),
 ) -> dict[str, Any]:
-    """All prompts: active version, version count, audit-chain integrity."""
+    """All prompts: active version, version count, audit-chain integrity.
+
+    ``writes_enabled`` tells the console upfront whether mutations are even
+    possible in this deployment (JWT configured, or the open-deployment write
+    flag on) so edit/promote controls can render disabled with a reason
+    instead of failing on first submit.
+    """
+    settings = get_settings()
     return {
         "prompts": registry.list_prompts(),
         "audit_chain_verified": registry.verify_chain(),
+        "writes_enabled": bool(
+            settings.jwt_secret_key or settings.prompt_registry_write_enabled
+        ),
     }
 
 

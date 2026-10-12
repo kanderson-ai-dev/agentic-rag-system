@@ -172,7 +172,7 @@
         <table id="perf-versions" class="recent">
           <thead>
             <tr>
-              <th scope="col">generate_answer</th>
+              <th scope="col">Answer generation</th>
               <th scope="col">Requests</th>
               <th scope="col">Avg cost</th>
               <th scope="col">Avg latency</th>
@@ -202,6 +202,7 @@
               <th scope="col">
                 <button class="th-sort" type="button" data-sort="latency">Latency</button>
               </th>
+              <th scope="col">Prompt</th>
               <th scope="col">
                 <button class="th-sort" type="button" data-sort="status">Status</button>
               </th>
@@ -212,6 +213,59 @@
       </div>
       <p id="recent-empty" class="empty-state" hidden>No requests recorded this session yet.</p>
       <nav class="pagination" id="pagination" aria-label="Recent requests pagination"></nav>
+    </section>
+
+    <section id="prompts-panel" class="card" aria-labelledby="prompts-heading">
+      <h2 id="prompts-heading">Prompt Registry</h2>
+      <p class="muted small">
+        Versioned prompts with gated promotion — candidates must beat the live
+        version on measured metrics before they can ship.
+      </p>
+      <p id="prompts-chain" class="prompt-chain muted small"></p>
+      <p id="prompts-writes-note" class="muted small" hidden></p>
+
+      <form id="prompts-auth" hidden>
+        <p id="prompts-auth-note" class="muted small"></p>
+        <div class="prompts-auth-fields">
+          <label for="prompts-username">Username</label>
+          <input id="prompts-username" name="username" autocomplete="username" required />
+          <label for="prompts-password">Password</label>
+          <input
+            id="prompts-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+          <button type="submit" class="btn small">Authenticate</button>
+        </div>
+        <p id="prompts-auth-error" class="error" role="alert" hidden></p>
+      </form>
+
+      <p id="prompts-error" class="error" role="alert" hidden></p>
+      <div id="prompt-list" role="list"></div>
+      <p id="prompts-empty" class="empty-state" hidden>
+        No prompts registered yet.
+      </p>
+
+      <div id="prompt-detail" hidden>
+        <div class="prompt-detail-head">
+          <h3 id="prompt-detail-title"></h3>
+          <div id="prompt-actions" class="prompt-actions"></div>
+        </div>
+        <p id="hint-promote" class="muted small">
+          Promote stays disabled until a completed A/B run supplies evidence.
+        </p>
+        <p id="hint-rollback" class="muted small">
+          Rollback needs a superseded version to fall back to.
+        </p>
+        <div id="prompt-versions" class="prompt-versions"></div>
+        <h4>Compare versions</h4>
+        <div id="prompt-diff-controls" class="prompt-diff-controls"></div>
+        <div id="prompt-diff" class="prompt-diff"></div>
+        <h4>A/B evaluation</h4>
+        <div id="prompt-ab" class="prompt-ab"></div>
+      </div>
     </section>
   </main>
 
@@ -232,6 +286,7 @@
     </p>
     <div class="review-context">
       <p id="review-question" class="muted"></p>
+      <p id="review-reason" class="muted small"></p>
       <p id="review-docs" class="muted small"></p>
     </div>
 
@@ -279,6 +334,43 @@
     <div class="review-actions">
       <button id="review-cancel" class="secondary" type="button">Cancel</button>
       <button id="review-submit" type="button">Confirm</button>
+    </div>
+  </dialog>
+
+  <dialog
+    id="candidate-modal"
+    aria-labelledby="cand-title"
+    aria-describedby="cand-vars"
+  >
+    <h2 id="cand-title">New candidate</h2>
+    <p id="cand-vars" class="muted small"></p>
+    <label for="cand-system">System prompt</label>
+    <textarea id="cand-system" rows="8" required></textarea>
+    <label for="cand-human">Human message (optional)</label>
+    <textarea id="cand-human" rows="4"></textarea>
+    <label for="cand-author">Author</label>
+    <input id="cand-author" required maxlength="100" />
+    <label for="cand-description">Description</label>
+    <input id="cand-description" required maxlength="500" />
+    <label for="cand-changelog">Changelog</label>
+    <input id="cand-changelog" required maxlength="500" />
+    <p id="cand-error" class="error" role="alert" hidden></p>
+    <div class="review-actions">
+      <button id="cand-cancel" class="secondary" type="button">Cancel</button>
+      <button id="cand-submit" type="button">Create candidate</button>
+    </div>
+  </dialog>
+
+  <dialog
+    id="confirm-modal"
+    aria-labelledby="confirm-title"
+    aria-describedby="confirm-text"
+  >
+    <h2 id="confirm-title">Confirm</h2>
+    <p id="confirm-text" class="muted small"></p>
+    <div class="review-actions">
+      <button id="confirm-cancel" class="secondary" type="button">Cancel</button>
+      <button id="confirm-ok" type="button">Confirm</button>
     </div>
   </dialog>
 

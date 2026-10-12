@@ -47,6 +47,9 @@ class QueryResponse(BaseModel):
     sources: list[str] = Field(default_factory=list)
     retries: int = 0
     interrupt: InterruptPayload | None = None
+    # Prompt versions pinned for this thread — the chat footer attributes the
+    # answer ("Answered with Answer generation v2") from this map.
+    prompt_versions: dict[str, int] = Field(default_factory=dict)
 
     @classmethod
     def from_graph_result(cls, result: dict[str, Any], thread_id: str) -> "QueryResponse":
@@ -79,6 +82,7 @@ class QueryResponse(BaseModel):
             answer=answer,
             sources=sources,
             retries=result.get("retry_count", 0),
+            prompt_versions=result.get("prompt_versions") or {},
         )
 
 

@@ -9,6 +9,7 @@ import { initGlobalErrorHandling } from "./toast.js";
 import { initChat, wireChat } from "./chat.js";
 import { initReview, wireReview, openReviewModal } from "./review.js";
 import { initDashboard, refreshDashboard } from "./dashboard.js";
+import { initPrompts } from "./prompts.js";
 
 function init() {
   initGlobalErrorHandling();
@@ -21,6 +22,7 @@ function init() {
   initChat();
   initReview();
   initDashboard();
+  initPrompts();
 
   refreshDashboard();
 }
