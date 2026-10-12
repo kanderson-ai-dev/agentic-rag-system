@@ -57,6 +57,10 @@ disable_error_code = ["arg-type", "call-overload", "import-untyped"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "e2e: browser-driven end-to-end checks (opt-in; needs Playwright + chromium)",
+]
+addopts = "-m 'not e2e'"
 
 [build-system]
 requires = ["hatchling"]

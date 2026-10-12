@@ -582,7 +582,7 @@ async function submitAuth() {
 // --- Init ------------------------------------------------------------------
 
 async function initPrompts() {
-  $("#prompts-auth-form").addEventListener("submit", (e) => {
+  $("#prompts-auth").addEventListener("submit", (e) => {
     e.preventDefault();
     submitAuth();
   });
