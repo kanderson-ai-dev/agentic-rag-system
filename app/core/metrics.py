@@ -1,6 +1,7 @@
 """Prometheus metrics for node latency, cost and request outcomes."""
 
 import functools
+import threading
 import time
 from collections.abc import Callable
 from typing import ParamSpec, TypeVar
@@ -27,6 +28,35 @@ agent_human_review_total = Counter(
     "agent_human_review_total",
     "Total requests escalated to human review.",
 )
+agent_backend_errors_total = Counter(
+    "agent_backend_errors_total",
+    "Total retrieval backend failures (timeouts and errors) by backend.",
+    labelnames=["backend"],
+)
+
+# Last observed outcome per retrieval backend, written from the request path
+# only. Read by `GET /health` to report `degraded` without probing backends
+# (a probe against a paused Neo4j Aura instance would stall the probe itself).
+_backend_ok: dict[str, bool] = {}
+_backend_ok_lock = threading.Lock()
+
+
+def record_backend_result(backend: str, ok: bool) -> None:
+    """Record the latest request-path outcome for a retrieval backend."""
+    with _backend_ok_lock:
+        _backend_ok[backend] = ok
+
+
+def backend_health() -> dict[str, bool]:
+    """Return a snapshot of the last known outcome per backend (`True` = ok)."""
+    with _backend_ok_lock:
+        return dict(_backend_ok)
+
+
+def reset_backend_health() -> None:
+    """Clear all recorded backend outcomes (used by tests)."""
+    with _backend_ok_lock:
+        _backend_ok.clear()
 
 
 def timed_node(node_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:

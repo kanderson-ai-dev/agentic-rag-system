@@ -1,11 +1,32 @@
 """Liveness and readiness probes."""
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
+from app.core.metrics import backend_health
 
 router = APIRouter(tags=["health"])
+
+
+@router.get("/health")
+def health() -> dict[str, Any]:
+    """Aggregated service health, always HTTP 200.
+
+    Reports ``degraded`` (instead of ``ok``) when the last request-path call
+    to a retrieval backend failed, so operators can spot a paused Neo4j Aura
+    instance or an unreachable Pinecone index without the failure ever
+    breaking the request path itself.
+    """
+    backends = backend_health()
+    failing = sorted(name for name, ok in backends.items() if not ok)
+    return {
+        "status": "degraded" if failing else "ok",
+        "backends": backends,
+        "failing_backends": failing,
+    }
 
 
 @router.get("/health/live")

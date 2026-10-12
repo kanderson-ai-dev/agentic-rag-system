@@ -11,6 +11,12 @@ from functools import lru_cache
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Default cap on accepted question length (OWASP LLM04). Configurable via the
+# `MAX_QUESTION_CHARS` environment variable; enforced both at the API boundary
+# (422) and inside the guardrail node so evaluation scripts see identical
+# behaviour.
+DEFAULT_MAX_QUESTION_CHARS = 1000
+
 
 class Settings(BaseSettings):
     """Runtime configuration for the Agentic RAG service."""
@@ -60,6 +66,7 @@ class Settings(BaseSettings):
     # --- Self-RAG graph ---
     max_retries: int = 2
     retriever_top_k: int = 4
+    max_question_chars: int = DEFAULT_MAX_QUESTION_CHARS
 
     # --- Checkpointing (required for human-in-the-loop interrupts) ---
     checkpoint_db_path: str = "data/checkpoints.sqlite"

@@ -69,6 +69,14 @@ _MAX_GRAPH_TERMS = 6
 # Cap on graph-search results, matching the Cypher `LIMIT 5`.
 _MAX_GRAPH_RESULTS = 5
 
+# Neo4j driver timeouts (seconds). A paused/deleted Aura instance fails DNS
+# resolution; these bounds keep that failure well under 2 s per query instead
+# of the driver's 30 s defaults — the retrieval node already degrades the
+# backend to an empty contribution, so retrying long buys nothing.
+_NEO4J_CONNECTION_TIMEOUT = 1.5
+_NEO4J_ACQUISITION_TIMEOUT = 1.5
+_NEO4J_MAX_RETRY_TIME = 1.0
+
 
 def sanitize_graph_term(term: str) -> str:
     """Sanitize a graph-search term via an allow-list and keyword rejection.
@@ -192,7 +200,13 @@ class Neo4jGraphStoreService:
     def __init__(self, uri: str, username: str, password: str) -> None:
         from neo4j import GraphDatabase
 
-        self._driver = GraphDatabase.driver(uri, auth=(username, password))
+        self._driver = GraphDatabase.driver(
+            uri,
+            auth=(username, password),
+            connection_timeout=_NEO4J_CONNECTION_TIMEOUT,
+            connection_acquisition_timeout=_NEO4J_ACQUISITION_TIMEOUT,
+            max_transaction_retry_time=_NEO4J_MAX_RETRY_TIME,
+        )
         self._cache: TTLCache[list[Document]] = TTLCache(
             ttl_seconds=_GRAPH_SEARCH_CACHE_TTL_SECONDS
         )

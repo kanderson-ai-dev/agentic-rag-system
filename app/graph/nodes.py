@@ -13,9 +13,17 @@ from typing import Any, Protocol, cast
 from langchain_core.documents import Document
 from langgraph.types import interrupt
 
-from app.core.metrics import timed_node
+from app.core.config import DEFAULT_MAX_QUESTION_CHARS
+from app.core.logging import get_logger
+from app.core.metrics import (
+    agent_backend_errors_total,
+    record_backend_result,
+    timed_node,
+)
 from app.graph.guardrails import detect_prompt_injection, sanitize_input, screen_output
 from app.graph.state import GraphState
+
+logger = get_logger(__name__)
 
 
 class Invokable(Protocol):
@@ -67,22 +75,36 @@ def _dedupe_documents(documents: list[Document]) -> list[Document]:
     return unique
 
 
-def _result_or_empty_on_timeout(future: Any) -> list[Document]:
-    """Return a backend's results, or [] when it exceeds the timeout.
+def _result_or_empty_on_timeout(future: Any, backend: str) -> list[Document]:
+    """Return a backend's results, or [] when it times out or fails.
 
-    A slow backend (e.g. a sleeping Neo4j Aura instance) degrades to an empty
-    contribution instead of stalling the whole pipeline; genuine errors still
-    propagate so a real outage surfaces as a request error, not silently
-    empty context.
+    A slow backend (e.g. a sleeping Neo4j Aura instance) or an unreachable one
+    degrades to an empty contribution instead of stalling or crashing the whole
+    pipeline: retrieval backend failures must never surface as a request error.
+    The failure is logged once per call, counted in
+    `agent_backend_errors_total{backend}` and recorded for `GET /health`.
     """
     try:
-        return list(future.result(timeout=_BACKEND_TIMEOUT_SECONDS))
-    except TimeoutError:
+        results = list(future.result(timeout=_BACKEND_TIMEOUT_SECONDS))
+    except Exception as exc:  # noqa: BLE001 - a backend outage degrades, never 500s
+        logger.warning(
+            "retrieval_backend_failed",
+            backend=backend,
+            exception=type(exc).__name__,
+        )
+        agent_backend_errors_total.labels(backend=backend).inc()
+        record_backend_result(backend, ok=False)
         return []
+    record_backend_result(backend, ok=True)
+    return results
 
 
 def make_hybrid_retrieve_node(
-    retriever: Invokable, graph_search_fn: Callable[[str], list[Document]]
+    retriever: Invokable,
+    graph_search_fn: Callable[[str], list[Document]],
+    *,
+    vector_backend: str = "vector",
+    graph_backend: str = "graph",
 ) -> NodeFn:
     """Retrieve documents from both the vector store and the graph store.
 
@@ -106,8 +128,8 @@ def make_hybrid_retrieve_node(
         try:
             vector_future = executor.submit(retriever.invoke, question)
             graph_future = executor.submit(graph_search_fn, question)
-            documents = _result_or_empty_on_timeout(vector_future)
-            documents.extend(_result_or_empty_on_timeout(graph_future))
+            documents = _result_or_empty_on_timeout(vector_future, vector_backend)
+            documents.extend(_result_or_empty_on_timeout(graph_future, graph_backend))
         finally:
             executor.shutdown(wait=False)
         return {"documents": _dedupe_documents(documents)}
@@ -264,17 +286,24 @@ def make_human_review_node() -> NodeFn:
     return human_review_node
 
 
-def make_guardrail_node() -> NodeFn:
+def make_guardrail_node(max_length: int = DEFAULT_MAX_QUESTION_CHARS) -> NodeFn:
     """Sanitize the input question and block it if a prompt injection is detected.
 
     This runs first in the graph so malicious input never reaches the retriever
-    or the LLM (guardrail-first, OWASP LLM01/LLM04).
+    or the LLM (guardrail-first, OWASP LLM01/LLM04). Questions longer than
+    ``max_length`` are blocked, matching the API's 422 behaviour so evaluation
+    scripts that bypass the HTTP layer see identical treatment.
     """
 
     @timed_node("guardrail")
     def guardrail_node(state: GraphState) -> dict[str, Any]:
-        question = sanitize_input(state["question"])
-        blocked = not question or detect_prompt_injection(question) is not None
+        raw_question = state["question"]
+        question = sanitize_input(raw_question)
+        blocked = (
+            not question
+            or len(raw_question) > max_length
+            or detect_prompt_injection(question) is not None
+        )
         return {"question": question, "blocked": blocked}
 
     return guardrail_node

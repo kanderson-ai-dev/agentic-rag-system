@@ -97,6 +97,32 @@ def test_human_retry_restarts_the_correction_loop_with_revised_question() -> Non
     assert "explain LangGraph nodes" in result["__interrupt__"][0].value["question"]
 
 
+def test_escalates_to_human_when_both_backends_fail() -> None:
+    """Both retrieval backends down -> empty context -> retry/HITL path,
+    never an exception: the graph treats backend failure like "no relevant
+    documents" and escalates instead of 500ing the request."""
+
+    class _UnavailableBackend:
+        def invoke(self, question: str) -> list:
+            from neo4j.exceptions import ServiceUnavailable
+
+            raise ServiceUnavailable("Failed to DNS resolve address")
+
+    def _failing_graph(_question: str) -> list:
+        raise ConnectionError("simulated graph backend outage")
+
+    graph = build_test_graph(
+        retriever=_UnavailableBackend(),
+        graph_search_fn=_failing_graph,
+        max_retries=0,
+    )
+
+    result = graph.invoke(initial_state("what is langgraph?"), config=_config("t8"))
+
+    assert "__interrupt__" in result
+    assert result["__interrupt__"][0].value["reason"] == "max_retries_exhausted"
+
+
 def test_blocks_prompt_injection_before_retrieval() -> None:
     """A malicious question must be blocked by the guardrail without ever
     reaching the retriever or the LLM (guardrail-first architecture)."""

@@ -2,6 +2,12 @@
 
 from langchain_core.prompts import ChatPromptTemplate
 
+# Exact answer the generation prompt instructs the model to give when the
+# retrieved context cannot answer the question. Shared with the API layer so a
+# refusal can be detected in code (and reported with honest `sources: []`)
+# without an extra LLM call.
+REFUSAL_TEXT = "I don't know."
+
 GRADE_DOCUMENTS_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
@@ -27,7 +33,8 @@ GENERATE_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
             "system",
             "You are an assistant for question-answering tasks. Use the "
             "retrieved context below to answer the user's question. If the "
-            "context does not contain the answer, say that you don't know. "
+            "context does not contain the answer, respond with exactly "
+            f'"{REFUSAL_TEXT}" and nothing else. '
             "Keep the answer concise (max three sentences) and grounded "
             "strictly in the provided context.",
         ),

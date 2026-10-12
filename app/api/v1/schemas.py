@@ -4,11 +4,19 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
+from app.graph.prompts import REFUSAL_TEXT
+
 
 class QueryRequest(BaseModel):
     """Request body for `POST /api/v1/rag/query`."""
 
-    question: str = Field(..., min_length=1, description="The user's natural language question.")
+    question: str = Field(
+        ...,
+        min_length=1,
+        max_length=get_settings().max_question_chars,
+        description="The user's natural language question.",
+    )
     thread_id: str | None = Field(
         default=None,
         description="Existing conversation/thread id. A new one is generated if omitted.",
@@ -47,12 +55,23 @@ class QueryResponse(BaseModel):
                 interrupt=InterruptPayload(**payload),
             )
 
-        documents = result.get("documents", [])
+        answer = result.get("generation", "")
+        # Honest sources: an "I don't know" refusal used none of the retrieved
+        # documents, and the same source can appear twice (vector + graph hit
+        # the same underlying document), so report each source once, in order.
+        sources: list[str] = []
+        if answer.strip() != REFUSAL_TEXT:
+            seen: set[str] = set()
+            for doc in result.get("documents", []):
+                source = doc.metadata.get("source", "unknown")
+                if source not in seen:
+                    seen.add(source)
+                    sources.append(source)
         return cls(
             status="completed",
             thread_id=thread_id,
-            answer=result.get("generation", ""),
-            sources=[doc.metadata.get("source", "unknown") for doc in documents],
+            answer=answer,
+            sources=sources,
             retries=result.get("retry_count", 0),
         )
 

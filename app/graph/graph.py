@@ -28,7 +28,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from app.core.config import Settings
+from app.core.config import DEFAULT_MAX_QUESTION_CHARS, Settings
 from app.core.cost_tracking import TokenUsageCallbackHandler
 from app.graph.edges import (
     make_decide_to_generate,
@@ -57,13 +57,24 @@ def build_graph(
     graph_search_fn: Callable[[str], list[Document]],
     checkpointer: BaseCheckpointSaver[Any],
     max_retries: int = 2,
+    max_question_chars: int = DEFAULT_MAX_QUESTION_CHARS,
+    vector_backend: str = "vector",
+    graph_backend: str = "graph",
 ) -> CompiledStateGraph[Any, None, Any, Any]:
     """Wire the Self-RAG nodes and edges into a compiled, runnable graph."""
     workflow = StateGraph(GraphState)
 
-    workflow.add_node("guardrail", make_guardrail_node())
+    workflow.add_node("guardrail", make_guardrail_node(max_question_chars))
     workflow.add_node("error_output", make_error_output_node())
-    workflow.add_node("retrieve", make_hybrid_retrieve_node(retriever, graph_search_fn))
+    workflow.add_node(
+        "retrieve",
+        make_hybrid_retrieve_node(
+            retriever,
+            graph_search_fn,
+            vector_backend=vector_backend,
+            graph_backend=graph_backend,
+        ),
+    )
     workflow.add_node(
         "grade_documents", make_grade_documents_node(grader_chain, generation_chain)
     )
@@ -185,4 +196,7 @@ def build_default_graph(
         graph_search_fn=graph_search_fn,
         checkpointer=checkpointer,
         max_retries=settings.max_retries,
+        max_question_chars=settings.max_question_chars,
+        vector_backend=vector_store_service.backend,
+        graph_backend=graph_store_service.backend,
     )

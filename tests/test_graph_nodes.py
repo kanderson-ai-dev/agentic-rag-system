@@ -5,9 +5,11 @@ import threading
 from langchain_core.documents import Document
 
 import app.graph.nodes as nodes_module
+from app.core.metrics import agent_backend_errors_total, backend_health
 from app.graph.nodes import (
     make_generate_node,
     make_grade_documents_node,
+    make_guardrail_node,
     make_human_review_node,
     make_hybrid_retrieve_node,
     make_transform_query_node,
@@ -78,6 +80,74 @@ def test_retrieve_node_returns_empty_on_backend_timeout(monkeypatch) -> None:
         release.set()
 
     assert result["documents"] == []
+
+
+class _FailingBackend:
+    """Retriever whose backend is unreachable (e.g. a paused Neo4j Aura)."""
+
+    def invoke(self, question: str) -> list[Document]:
+        from neo4j.exceptions import ServiceUnavailable
+
+        raise ServiceUnavailable("Failed to DNS resolve address")
+
+
+def test_retrieve_node_degrades_failing_vector_backend_to_empty() -> None:
+    graph_doc = Document(
+        page_content="graph result",
+        metadata={"source": "graph", "backend": "networkx"},
+    )
+    node = make_hybrid_retrieve_node(
+        _FailingBackend(), graph_search_fn=lambda _q: [graph_doc]
+    )
+
+    result = node(_state())
+
+    assert result["documents"] == [graph_doc]
+    assert backend_health()["vector"] is False
+    assert backend_health()["graph"] is True
+
+
+def test_retrieve_node_returns_empty_when_both_backends_fail() -> None:
+    def _failing_graph(_question: str) -> list[Document]:
+        raise ConnectionError("simulated graph backend outage")
+
+    node = make_hybrid_retrieve_node(_FailingBackend(), graph_search_fn=_failing_graph)
+    before = agent_backend_errors_total.labels(backend="vector")._value.get()
+
+    result = node(_state())
+
+    assert result["documents"] == []
+    assert agent_backend_errors_total.labels(backend="vector")._value.get() == before + 1
+    assert backend_health() == {"vector": False, "graph": False}
+
+
+def test_retrieve_node_recovers_backend_health_after_failure() -> None:
+    node = make_hybrid_retrieve_node(
+        _FailingBackend(), graph_search_fn=lambda _q: []
+    )
+    node(_state())
+    recovered = make_hybrid_retrieve_node(
+        FakeRetriever([RELEVANT_DOC]), graph_search_fn=lambda _q: []
+    )
+    recovered(_state())
+
+    assert backend_health()["vector"] is True
+
+
+def test_guardrail_node_blocks_over_length_question() -> None:
+    node = make_guardrail_node(max_length=10)
+
+    result = node(_state(question="a question far longer than ten characters"))
+
+    assert result["blocked"] is True
+
+
+def test_guardrail_node_accepts_question_within_length_cap() -> None:
+    node = make_guardrail_node(max_length=100)
+
+    result = node(_state(question="what is langgraph?"))
+
+    assert result["blocked"] is False
 
 
 def test_grade_documents_node_filters_out_irrelevant_documents() -> None:
