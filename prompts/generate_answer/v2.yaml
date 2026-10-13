@@ -12,7 +12,7 @@
 "description": |-
   Generates the final grounded answer (completeness over brevity).
 "changelog": |-
-  Replace hard 3-sentence cap with completeness instruction; fixes multi-part answers dropping trailing concepts (selfrag_dependencies crec=0.5).
+  Replace the hard three-sentence cap with a completeness instruction; fixes multi-part answers dropping trailing concepts (context recall 0.5 on the multi-hop case).
 "variables":
 - |-
   context

@@ -7,6 +7,7 @@ observed telemetry to ``docs/functional-qa/observations.json`` — the evidence
 each scenario asserts the *flow* works and records what actually happened.
 """
 
+import contextlib
 import json
 import time
 from pathlib import Path
@@ -43,10 +44,13 @@ def ask(page, base_url: str, surface: str, question: str, scenario: str) -> dict
         page.fill("#question", question)
         page.press("#question", "Enter")
         wait_for_send(page, "#ask-button", timeout_ms=120_000)
-        page.wait_for_function(
-            "document.querySelector('#answer').innerText.trim().length > 0",
-            timeout=120_000,
-        )
+        # Skeleton first, then its detach = final text (CSP blocks eval'd
+        # predicates — wait_for_function is off-limits on this app).
+        page.wait_for_selector("#answer:not(:empty)", timeout=120_000)
+        with contextlib.suppress(Exception):
+            page.wait_for_selector(
+                "#answer [role='status']", state="detached", timeout=120_000
+            )
         outcome = page.locator("#answer").inner_text()
     else:
         page.goto(f"{base_url}/console/", wait_until="networkidle")

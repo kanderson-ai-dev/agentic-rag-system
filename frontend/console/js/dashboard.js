@@ -6,6 +6,7 @@
 
 import { $, $$, debounce } from "/js/util.js";
 import { api } from "/js/api.js";
+import { label } from "/js/labels.js";
 import { showToast } from "./toast.js";
 
 const DASHBOARD_PAGE_SIZE = 8;
@@ -257,7 +258,7 @@ function renderPerformance(perf) {
       row.setAttribute("role", "listitem");
       const name = document.createElement("span");
       name.className = "perf-bar-name";
-      name.textContent = node.node;
+      name.textContent = label("node", node.node);
       const track = document.createElement("div");
       track.className = "perf-bar-track";
       const bar = document.createElement("div");

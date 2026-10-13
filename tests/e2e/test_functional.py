@@ -291,9 +291,9 @@ def test_budget_exhausted_shows_friendly_429(page, stub_server: str) -> None:
         page.fill("#question", "What is LangGraph?")
         page.press("#question", "Enter")
         # Wait for real text — the skeleton divs are children but carry none.
-        page.wait_for_function(
-            "document.querySelector('#answer').innerText.trim().length > 0",
-            timeout=30_000,
+        # (wait_for_function evals inside the page — the CSP forbids that.)
+        page.wait_for_selector(
+            "#answer:has-text('Daily demo budget')", timeout=30_000
         )
         assert "Daily demo budget reached" in page.locator("#answer").inner_text()
         # No Retry affordance — the budget resets at UTC midnight, not on retry.
