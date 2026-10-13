@@ -2,8 +2,8 @@
 
 Drives the same deterministic stub as ``ui_qa.py`` so the capture is
 reproducible offline. Playwright records ``webm``; the ffmpeg binary bundled
-with Playwright converts it to a paletted GIF, time-compressed to fit the
-~15 s hero budget.
+with Playwright converts it to a paletted GIF at near-real-time pacing —
+every caption stays on screen long enough to be read.
 
     uv run python scripts/record_demo.py
 """
@@ -53,9 +53,11 @@ def record() -> None:
                 )
                 page = ctx.new_page()
 
-                # 1. Landing: ask → grounded answer.
+                # 1. Landing: ask → grounded answer — hold so the answer
+                # text and source chips are actually readable.
                 page.goto(f"{base}/", wait_until="networkidle")
                 page.fill("#question", "What is LangGraph?")
+                page.wait_for_timeout(1200)
                 page.press("#question", "Enter")
                 page.wait_for_selector("#answer:not(:empty)", timeout=30_000)
                 with contextlib.suppress(Exception):
@@ -63,49 +65,51 @@ def record() -> None:
                         "#answer [role='status']", state="detached",
                         timeout=30_000,
                     )
-                page.wait_for_timeout(1800)
+                page.wait_for_timeout(4500)
 
                 # 2. Console → Prompts → Answer generation → diff.
                 page.goto(f"{base}/console/", wait_until="networkidle")
                 page.wait_for_selector(".prompt-row", timeout=10_000)
                 page.locator("#prompts-panel").scroll_into_view_if_needed()
-                page.wait_for_timeout(600)
+                page.wait_for_timeout(1800)
                 page.locator(".prompt-row").filter(
                     has_text="Answer generation"
                 ).first.click()
                 page.wait_for_selector(".diff-table", timeout=10_000)
                 page.locator("#prompt-diff").scroll_into_view_if_needed()
-                page.wait_for_timeout(1800)
+                page.wait_for_timeout(4500)
 
                 # 3. New candidate → create v3.
                 page.click("text=New candidate")
                 page.wait_for_selector("#candidate-modal[open]", timeout=10_000)
-                page.wait_for_timeout(700)
+                page.wait_for_timeout(1600)
                 page.fill("#cand-author", "demo")
                 page.fill("#cand-description", "demo candidate")
                 page.fill("#cand-changelog", "readme hero demo")
+                page.wait_for_timeout(1200)
                 page.click("#cand-submit")
                 page.wait_for_selector(
                     ".prompt-version:has-text('v3')", timeout=15_000
                 )
-                page.wait_for_timeout(600)
+                page.wait_for_timeout(2200)
 
-                # 4. A/B run → gate verdict.
+                # 4. A/B run → gate verdict — the scorecards are the densest
+                # text in the demo; give them the longest read beat.
                 page.click("text=Run A/B test")
                 page.wait_for_selector(".ab-verdict", timeout=30_000)
                 page.locator("#prompt-ab").scroll_into_view_if_needed()
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(5000)
 
                 # 5. Promote → v3 becomes live.
                 page.click("button:has-text('Promote')")
                 page.wait_for_selector("#confirm-modal[open]", timeout=10_000)
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(1400)
                 page.click("#confirm-ok")
                 page.wait_for_selector(
                     ".prompt-version:has-text('v3') .pill-accent",
                     timeout=15_000,
                 )
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(4000)
 
                 webm_path = Path(page.video.path())
                 ctx.close()
@@ -134,7 +138,7 @@ def record() -> None:
             [
                 ffmpeg, "-y", "-i", str(webm), "-i", str(palette),
                 "-lavfi",
-                "setpts=1.15*PTS,fps=14,scale=960:-1:flags=lanczos [x]; "
+                "setpts=1.0*PTS,fps=14,scale=960:-1:flags=lanczos [x]; "
                 "[x][1:v] paletteuse",
                 str(OUT),
             ],
