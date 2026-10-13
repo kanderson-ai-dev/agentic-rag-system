@@ -109,6 +109,15 @@ def test_live_suite(live_server: str, browser) -> None:
     for scenario, surface, question in QUERIES:
         results[scenario] = ask(page, live_server, surface, question, scenario)
 
+    # Contamination guard: a stub graph override leaking into this session
+    # would answer with "Answer based on:" and zero token usage — the evidence
+    # file must never be written from stub data.
+    first_row = _scenarios[0]["usage_row"]
+    assert first_row.get("prompt_tokens", 0) > 0, (
+        "zero prompt tokens on a live scenario — the deterministic stub graph "
+        "leaked into the live suite; observations would be meaningless"
+    )
+
     assert "reliable answer" in results["landing_ood_1"]["text"]
 
     results["console_answer"] = ask(

@@ -146,8 +146,16 @@ def live_server() -> Iterator[str]:
     if not LIVE:
         pytest.skip("set E2E_LIVE=1 to run the live functional QA suite")
     get_settings.cache_clear()
-    with _Server(_free_port()) as server:
-        yield server.base_url
+    # stub_server is session-scoped and keeps its graph override alive for the
+    # whole session — the live suite must serve the real graph even when stub
+    # tests ran first in the same invocation.
+    leaked = app.dependency_overrides.pop(get_graph, None)
+    try:
+        with _Server(_free_port()) as server:
+            yield server.base_url
+    finally:
+        if leaked is not None:
+            app.dependency_overrides[get_graph] = leaked
 
 
 @pytest.fixture(scope="session")
