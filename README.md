@@ -32,7 +32,7 @@ generation is graded against its own sources, low-confidence answers escalate
 to a human instead of hallucinating, and every number on this page is
 reproducible — `python evaluation/run_ragas.py` regenerates the scorecard, and
 the screenshots below are captured from the real running app by
-`scripts/capture_screenshots.py`.
+`scripts/ui_qa.py` (and `scripts/record_demo.py` for the GIF above).
 
 It demonstrates that I can **operate** an agentic system with measurable
 evidence — not just wire one up.
@@ -55,87 +55,141 @@ evidence — not just wire one up.
 - 📉 **Quality is a number, not a feeling** — RAGAS-style scorecards are
   versioned in git and gated in CI; a regression in faithfulness fails the
   build rather than getting shrugged off.
+- 🧬 **Prompts are versioned artifacts with metric-gated promotion** — the
+  Prompt Registry keeps every version, hashes an append-only audit chain, and
+  a candidate can only go live after a measured A/B run passes the same EDD
+  thresholds CI enforces.
 - 💰 **Cost is accounted per query** — token usage flows into SQLite and
   Prometheus with a documented budget (≤ $0.01/query) and a live dashboard.
 - 🖥️ **Two surfaces, one product decision** — `/` is a minimalist public
   landing (one input, one answer — no login, no dashboard); `/console` is the
-  operator console with chat, live metrics, and the HITL review modal. The
-  first screen sells the answer; the second proves the machinery.
+  operator console with chat, live metrics, the HITL review modal, and the
+  prompt-registry workflow shown in the GIF above.
 - 🔓 **Open by design, auth when you need it** — the demo runs with zero
   credentials; JWT + bcrypt + rate-limited `/auth/login` are ready when the API
   needs protection.
-- 🧪 **CI green with zero secrets** — the suite (144 tests, 96% coverage on
-  `app/`) runs fully offline with stubs; cloud-backed paths skip cleanly
-  without credentials, so a fork clones and passes.
+- 🧪 **CI green with zero secrets** — the suite (357 tests + 24 browser e2e,
+  95% coverage on `app/`) runs fully offline with stubs; cloud-backed paths
+  skip cleanly without credentials, so a fork clones and passes.
 
 ---
 
 ## 📊 Evaluation Results
 
-Measured with `python evaluation/run_ragas.py` (Pinecone + Neo4j,
-`gpt-4o-mini`) on a 7-question dataset (6 in-domain + 1 out-of-domain).
+Latest committed scorecard — `evaluation/results/ragas_scorecard.json`,
+regenerated with `python evaluation/run_ragas.py` on **Pinecone + Neo4j**,
+`gpt-4o-mini`, 18 typed cases (`dataset v6ec2c719f9`), promoted prompts
+`generate_answer v2` + `grade_documents/transform_query/llm_judge v1`:
 
-| Metric | Latest | Target | Status |
+| Metric | Measured | Target | Status |
 |---|---|---|---|
-| `faithfulness` | **0.90** | ≥ 0.85 | ✅ |
-| `answer_relevancy` | **0.90** | ≥ 0.85 | ✅ |
-| `context_precision` | **0.90** | ≥ 0.75 | ✅ |
-| `context_recall` | **0.90** | ≥ 0.75 | ✅ |
-| LLM-as-judge (1–5) | **4.83** | ≥ 4.0 | ✅ |
+| `faithfulness` | **1.00** | ≥ 0.85 | ✅ |
+| `answer_relevancy` | **1.00** | ≥ 0.85 | ✅ |
+| `context_precision` | **0.98** | ≥ 0.75 | ✅ |
+| `context_recall` | **0.96** | ≥ 0.75 | ✅ |
+| LLM-as-judge (1–5) | **4.90** | ≥ 4.0 | ✅ |
+| `injection_block_rate` | **1.00** | = 1.0 | ✅ |
+| `ood_refusal_rate` | **1.00** | = 1.0 | ✅ |
+| `cost_per_query` | **$0.0004** | ≤ $0.01 | ✅ |
+| `latency_p50` / `latency_p95` | **3.6 s** / **7.2 s** | ≤ 3 s / ≤ 6 s | ⚠️ |
 
-![RAGAS scorecard](docs/screenshots/ragas-scorecard.png)
+⚠️ p50/p95 sit above the stated targets on this run — driven mostly by Neo4j
+Aura cold-starts and grader round-trips (see Known Limitations); the numbers
+are published as measured, not tuned.
 
-**Key insight**: hybrid retrieval clears the strict faithfulness threshold
-(≥ 0.85) — combining vector similarity with graph context measurably reduces
-hallucination risk compared to vector-only approaches.
+The scorecard carries its provenance in `meta` (dataset hash, prompt versions,
+backends, git sha). `python evaluation/check_scorecard.py` — run in the weekly
+live workflow — fails when either the thresholds regress **or** the committed
+scorecard was produced by a different configuration than the current one.
 
-The scorecard is versioned in git (`evaluation/results/ragas_scorecard.json`),
-and the LLM-as-judge score is produced by a real, versioned **LangSmith
-experiment** (`python evaluation/run_evaluation.py`) — `langsmith.evaluate()`
-runs the 10-question dataset (`agentic-rag-system-eval`) with five evaluators
-per run (`faithfulness`, `answer_relevancy`, `context_precision`,
-`context_recall`, and the 1–5 `llm_as_judge` rubric for
-correctness/usefulness/safety), so every score is inspectable run-by-run, not
-just an aggregate.
+### Retrieval-mode baseline (measured, same dataset)
 
-Experiment `agentic-rag-system-a4e7c5db`, 10/10 runs with all five evaluators
-visible per row (the out-of-domain question scores 0.00 by design — the system
-correctly refuses to answer outside its knowledge base, and the evaluators
-catch it):
+`python evaluation/run_baseline.py` ran all four modes on the same 18 cases —
+`evaluation/results/baseline_comparison.json`:
 
-![LangSmith experiment — run table with the five evaluators](docs/screenshots/langsmith-experiment-1.png)
+| Mode | faithfulness | context_recall | llm_judge | multi-hop recall | p95 | $/query |
+|---|---|---|---|---|---|---|
+| **hybrid** | **1.00** | **0.96** | 4.76 | **0.92** | 6.9 s | $0.00039 |
+| vector_only | 1.00 | 0.93 | 4.76 | 0.83 | 6.6 s | $0.00033 |
+| graph_only | 0.93 | 0.93 | 4.64 | **0.92** | 5.5 s | $0.00034 |
+| no_retrieval | 0.07 | 0.00 | 2.52 | 0.00 | 0.9 s | $0.00013 |
 
-Each score is drillable down to the judge's reasoning:
+**Key insight, now measured**: hybrid ties vector-only on faithfulness (both at
+the 1.0 ceiling) and **wins where it matters** — multi-hop context recall
+(0.92 vs 0.83) and judge score. `no_retrieval` collapses to faithfulness 0.07:
+the retrieval layer, not the prompt, is what grounds the answers.
 
-![LangSmith — llm_as_judge score with evaluator reasoning](docs/screenshots/langsmith-experiment-2.png)
+### Prompt iteration — measured, not anecdotal
 
-And every evaluator runs as a real trace (`gpt-4o-mini`, token usage visible):
+`generate_answer` went v1 → v2 through the gated A/B path
+(`evaluation/results/ab/0b2856ed2f27.json`, 18 cases per arm):
 
-![LangSmith — evaluator trace detail](docs/screenshots/langsmith-experiment-3.png)
+| | judge | faithfulness | p50 | p95 | verdict |
+|---|---|---|---|---|---|
+| v1 (baseline) | 4.76 | 1.00 | 3 165 ms | 6 758 ms | superseded |
+| **v2** | **4.86** | 1.00 | **2 789 ms** | **4 083 ms** | **promoted** |
 
-The same evidence regenerated on **Langfuse** (the provider is swappable via
-`TRACING_PROVIDER` — LangSmith's monthly trace quota was exhausted). The
-versioned dataset `agentic-rag-system-eval-v6ec2c719f9` — 18 typed cases
-(single-hop, multi-hop, out-of-domain, injection, other-language, vague):
+v2 replaced a hard "max three sentences" cap with a completeness instruction
+after the baseline showed a multi-part case dropping a concept. The gate also
+flagged — and got fixed for — an inverted sign on latency regression: faster
+is not a regression.
 
-![Langfuse — versioned evaluation dataset](docs/screenshots/langfuse-eval-dataset.png)
+### Experiment evidence
 
-Experiment `ga2-gd1-lj1-tq1-f964ae3-2026-10-12` — the full dataset run after
-`generate_answer` v2 was promoted through the measured A/B gate
-(`evaluation/results/ab/0b2856ed2f27.json`). Aggregate: faithfulness 1.00,
-answer_relevancy 1.00, context_precision 1.00, context_recall 0.95,
-expected_behavior 1.00, llm_as_judge 4.90:
+Experiment `ga2-gd1-lj1-tq1-f964ae3-2026-10-12` on **Langfuse**
+(`TRACING_PROVIDER=langfuse`; LangSmith's monthly trace quota was exhausted —
+the provider is swappable, see Observability). 18 items, per-item evaluator
+scores, aggregate llm_as_judge 4.90:
 
 ![Langfuse — experiment per-item evaluator scores](docs/screenshots/langfuse-experiment-scores.png)
 
-Every item is a real end-to-end trace: the span tree shows the Self-RAG
-pipeline (guardrail → budget gate → hybrid retrieve → grade → generate → output guardrail)
-with per-node latency and token cost:
+The versioned dataset (`agentic-rag-system-eval-v6ec2c719f9`) and a full span
+tree (guardrail → budget gate → retrieve → grade → generate → output guardrail,
+per-node latency + token cost) live at
+[`langfuse-eval-dataset.png`](docs/screenshots/langfuse-eval-dataset.png) and
+[`langfuse-trace-tree.png`](docs/screenshots/langfuse-trace-tree.png).
 
-![Langfuse — single-item trace tree](docs/screenshots/langfuse-trace-tree.png)
+The earlier **LangSmith** run — same five evaluators per row on the
+`agentic-rag-system-eval` dataset, including the designed 0.00 for the
+out-of-domain refusal:
 
-Trend history is tracked in `evaluation/results/TREND.md` (regenerated with
-`python evaluation/run_ragas.py --report`).
+![LangSmith experiment — run table with the five evaluators](docs/screenshots/langsmith-experiment-1.png)
+
+(Judge reasoning and evaluator-trace details:
+[`langsmith-experiment-2.png`](docs/screenshots/langsmith-experiment-2.png),
+[`langsmith-experiment-3.png`](docs/screenshots/langsmith-experiment-3.png).)
+
+Trend history: `evaluation/results/TREND.md`
+(`python evaluation/run_ragas.py --report`).
+
+---
+
+## 🧬 Prompt Registry — versioned, gated, auditable
+
+Prompts are not constants in code; they are **versioned artifacts** under
+`prompts/` with a lifecycle (`draft → candidate → promoted → superseded /
+rolled_back`), a hash-chained audit log (`prompts/AUDIT.jsonl`), and a
+promotion gate that requires a measured A/B scorecard to meet every EDD
+threshold **and** not regress the live version.
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /api/v1/prompts` | open | list prompts, active version, audit-chain status |
+| `GET /api/v1/prompts/{name}/{version}` | open | one version's template + scorecard |
+| `GET /api/v1/prompts/{name}/diff` | open | line diff between two versions |
+| `POST …/{name}/candidates` | JWT or `PROMPT_REGISTRY_WRITE_ENABLED` | create the next candidate |
+| `POST …/{name}/ab-test` → `GET …/ab-test/{job}` | same | measured A/B run (async, polled) |
+| `POST …/{name}/promote` · `…/rollback` | same | gated promotion / instant rollback |
+
+The console's **Prompts** tab drives the whole flow — browse versions, diff,
+edit a candidate (template-variable contract validated), run A/B, promote or
+roll back:
+
+![Prompt registry — list with audit-chain status](docs/ui-qa/console-prompts-list.png)
+
+Versioned templates and the live audit chain mean every answer carries
+`prompt_versions` (visible in the console's chat footer and recent-requests
+table) — a score is never detached from the prompts that produced it.
 
 ---
 
@@ -149,17 +203,17 @@ retrieval, or the model change.
 | Dimension | Metric | Success threshold | Where it lives |
 |---|---|---|---|
 | Task performance (RAGAS) | `faithfulness` | ≥ 0.85 | `evaluation/run_ragas.py` |
-| | `answer_relevancy` | ≥ 0.85 | ídem |
-| | `context_precision` | ≥ 0.75 | ídem |
-| | `context_recall` | ≥ 0.75 | ídem |
+| | `answer_relevancy` | ≥ 0.85 | `evaluation/run_ragas.py` |
+| | `context_precision` | ≥ 0.75 | `evaluation/run_ragas.py` |
+| | `context_recall` | ≥ 0.75 | `evaluation/run_ragas.py` |
 | Task performance (LLM-as-judge) | rubric 1–5 (correctness/usefulness/safety) | avg ≥ 4.0 | `evaluation/evaluators.py` |
 | Functional security | known injection payloads blocked | 100% | `tests/test_guardrails.py` (CI) |
-| Latency | p50 end-to-end (excl. HITL pauses) | ≤ 3 s | Prometheus + `/dashboard/summary` |
-| | p95 end-to-end | ≤ 6 s | ídem |
-| Cost | avg cost per query (`gpt-4o-mini`) | ≤ $0.01 | `usage_store` + `/dashboard/summary` |
+| Latency | p50 end-to-end (excl. HITL pauses) | ≤ 3 s | Prometheus + `/api/v1/dashboard/performance` |
+| | p95 end-to-end | ≤ 6 s | Prometheus + `/api/v1/dashboard/performance` |
+| Cost | avg cost per query (`gpt-4o-mini`) | ≤ $0.01 | `usage_store` + `/api/v1/dashboard/performance` |
 | CI reliability | GitHub Actions build | green | `.github/workflows/ci.yml` |
 | Supply-chain security | `gitleaks` / `pip-audit` / CodeQL findings | 0 | CI |
-| Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 96%** | CI |
+| Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 95%** | CI |
 | Static typing | `mypy --strict` on `app/` | 0 errors | CI |
 
 ---
@@ -223,7 +277,7 @@ graph TD
 | `/` | Minimalist public landing — one input, one grounded answer (Tailwind via CDN, no build step). |
 | `/console` | Operator console — chat, live cost/latency dashboard, and the accessible HITL review modal. |
 
-![The operator console dashboard](docs/screenshots/dashboard-latency.png)
+![The operator console dashboard](docs/ui-qa/console-dashboard.png)
 
 ---
 
@@ -235,6 +289,9 @@ graph TD
 - **Self-RAG correction loop** — retrieve → grade → generate / rewrite /
   escalate.
 - **Human-in-the-loop** — approve / retry / override when auto-correction fails.
+- **Prompt Registry** — versioned prompt artifacts with a hash-chained audit
+  log, gated A/B promotion, rollback, and a console workflow (browse → diff →
+  candidate → A/B → promote).
 - **Input/output guardrails** — prompt-injection detection and output screening
   (OWASP LLM01/LLM02).
 - **JWT authentication (API-level, optional)** — single-user login with bcrypt +
@@ -259,18 +316,24 @@ Pinecone / Chroma · Neo4j / NetworkX · SQLite · GitHub Actions · Docker.
 
 ```
 app/
-├── api/v1/routes/   # auth, rag, review, dashboard, health
+├── api/v1/routes/   # auth, rag, review, dashboard, health, prompts
 ├── core/            # config, security, logging, metrics, cost_tracking, rate_limit
 ├── graph/           # state, nodes, edges, graph, prompts, guardrails
-└── services/        # llm, vector_store, graph_store, usage_store
-evaluation/          # dataset, evaluators, run_ragas, run_evaluation
+└── services/        # llm, vector_store, graph_store, usage_store,
+                     # prompt_registry, ab_test_jobs, promotion_gate
+evaluation/          # dataset, evaluators, run_ragas, run_evaluation,
+                     # run_baseline, ab_test, check_scorecard
+prompts/             # versioned prompt artifacts + AUDIT.jsonl chain
 frontend/
 ├── landing/         # minimalist public landing (`/`, Tailwind via CDN)
-├── console/         # operator console (`/console`: chat, dashboard, HITL modal)
-└── js/              # shared ES modules (util, api, markdown) + landing.js
-scripts/             # ingest_knowledge_base, capture_screenshots
-tests/               # pytest suite
-docs/screenshots/    # real captures referenced by this README
+├── console/         # operator console (`/console`: chat, dashboard, HITL, prompts)
+└── js/              # shared ES modules (util, api, markdown, labels)
+scripts/             # ingest_knowledge_base, ui_qa, record_demo, capture_screenshots
+tests/               # pytest suite (+ e2e/ browser checks, opt-in marker)
+docs/
+├── functional-qa/   # scenario checklist + live observations
+├── ui-qa/           # visual captures + checklist + manifest
+└── screenshots/     # real captures referenced by this README
 ```
 
 ## 🚀 Quick Start
@@ -304,6 +367,12 @@ needed), `http://localhost:8000/console` for the operator console, or
 | `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | no | ✅ | graph store (else NetworkX local) |
 | `JWT_SECRET_KEY` | no | ✅ | enable API-level auth (else open quickstart; frontend has no login) |
 | `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` | no | ✅ | single-user login via `/api/v1/auth/login` |
+| `PROMPT_REGISTRY_WRITE_ENABLED` | no | — | allow prompt mutations without JWT (default `false`) |
+| `DAILY_BUDGET_USD` | no | — | hard LLM spend cap per UTC day (default `1.00`) |
+| `RATE_LIMIT_PER_MINUTE` | no | — | per-IP limit on `/rag/query` + `/review` (default `20`) |
+| `MAX_QUESTION_CHARS` | no | — | input cap at the API boundary (default `1000`) |
+| `RETRIEVAL_MODE` | no | — | `hybrid` (default), `vector_only`, `graph_only`, `no_retrieval` |
+| `HUMAN_MINUTES_PER_QUERY` / `HUMAN_HOURLY_USD` | no | — | Human-vs-Agent estimate assumptions (defaults `6` / `30`) |
 
 Never commit secrets. See `.env.example` for the full template.
 
@@ -328,7 +397,17 @@ The knowledge base contains curated documentation about agentic AI concepts:
 This dual-source approach gives the LLM both semantic meaning and structural
 relationships, eliminating the context gaps that invite hallucination.
 
-## 💰 Cost Control
+## ⚡ Performance & Cost
+
+The console's Performance panel is a live operating picture, not a vanity
+chart: p50/p95 end-to-end and **per graph node** against the stated targets
+(text + colour, never colour alone), session cost, the **daily budget** bar,
+cost trend, per-prompt-version aggregates, and the **Human vs Agent**
+comparison — the human side is an explicit estimate
+(`HUMAN_MINUTES_PER_QUERY=6`, `HUMAN_HOURLY_USD=30`), the agent side is
+measured session telemetry:
+
+![Performance panel — per-node latency, budget, human-vs-agent](docs/ui-qa/console-performance.png)
 
 Every request's token usage and cost are captured via a LangChain callback and
 stored in SQLite, then surfaced through the dashboard and Prometheus:
@@ -337,36 +416,27 @@ stored in SQLite, then surfaced through the dashboard and Prometheus:
 cost = (prompt_tokens / 1_000_000 × input_price) + (completion_tokens / 1_000_000 × output_price)
 ```
 
-With `gpt-4o-mini` defaults (`$0.15` / 1M input, `$0.60` / 1M output), a query
-consuming 2,000 prompt + 500 completion tokens costs ≈ **$0.0006** — the live
-dashboard below shows real queries at **$0.0002–$0.0003** each:
-
-![Dashboard — cost](docs/screenshots/dashboard-cost.png)
-
-Prices are configurable via `COST_INPUT_PRICE_PER_1M` /
+With `gpt-4o-mini` defaults (`$0.15` / 1M input, `$0.60` / 1M output) the
+measured scorecard average is **$0.0004/query** — well under the ≤ $0.01
+target. Prices are configurable via `COST_INPUT_PRICE_PER_1M` /
 `COST_OUTPUT_PRICE_PER_1M`. Only numeric metadata is persisted — never the
 question or answer content.
 
-| Metric | Target |
+| Endpoint | What it reports |
 |---|---|
-| Average cost per query | ≤ $0.01 (documented context assumption) |
-| Cost attribution | 100% of queries recorded |
+| `GET /api/v1/dashboard/summary` | session totals — cost, latency, blocked/escalated |
+| `GET /api/v1/dashboard/performance` | p50/p95 per node + end-to-end, cost trend, per-version aggregates, daily budget, human-vs-agent |
+| `GET /metrics` | Prometheus histograms (`agent_node_latency_seconds`, `agent_llm_cost_usd_total`, …) |
+| `GET /health` | backend status **plus the daily-budget position** |
 
-## ⚡ Performance & Latency Monitoring
+| Metric | Target | Measured (scorecard run) |
+|---|---|---|
+| p50 end-to-end latency | ≤ 3 s | 3.6 s ⚠️ |
+| p95 end-to-end latency | ≤ 6 s | 7.2 s ⚠️ |
+| Average cost per query | ≤ $0.01 | $0.0004 ✅ |
 
-Per-node latency is exposed as Prometheus histograms, and per-request
-cost/latency is stored in the usage store. Live aggregates:
-
-- `GET /api/v1/dashboard/summary` — total cost, average latency,
-  blocked/escalated counts.
-- `GET /metrics` — `agent_node_latency_seconds` (histogram, per node),
-  `agent_llm_cost_usd_total`, `agent_blocked_requests_total`,
-  `agent_human_review_total`.
-
-| Metric | Target |
-|---|---|
-| p50 end-to-end latency | ≤ 3 s (excluding HITL pauses) |
-| p95 end-to-end latency | ≤ 6 s |
+Latency misses the targets on the cloud-backed run — see Known Limitations.
+The panel reports them honestly instead of hiding them.
 
 ## 🔭 Tracing & Evaluation Observability
 
@@ -411,13 +481,30 @@ The image runs as a non-root user and injects secrets at runtime via `.env`.
 
 ```bash
 uv run pytest -v                      # core suite (no credentials required)
-uv run pytest --cov=app               # coverage report — 96% on app/ measured
+uv run pytest --cov=app               # coverage report — 95% on app/ measured
+uv run pytest -m e2e                  # browser-driven functional + content rules
+                                      # (opt-in: needs playwright + chromium)
 uv run ruff check .                   # lint
 uv run mypy --strict app/             # strict type check (0 errors)
 ```
 
+The `e2e` marker is excluded by default so `pytest` stays offline and fast;
+`E2E_LIVE=1` switches the browser suite to real backends for evidence runs.
 Optional-credential tests (Pinecone, Neo4j, evaluation) skip automatically when
 the relevant secrets are absent.
+
+## ✅ Quality Assurance
+
+Two committed checklists record the QA passes — like CI, they exist so the
+claims above are inspectable, not just asserted:
+
+- [`docs/functional-qa/CHECKLIST.md`](docs/functional-qa/CHECKLIST.md) —
+  scenario-by-scenario functional evidence with live latency/token/cost
+  observations (`docs/functional-qa/observations.json`).
+- [`docs/ui-qa/CHECKLIST.md`](docs/ui-qa/CHECKLIST.md) — visual & layout checks
+  across widths and both themes, plus the automated content rules
+  (`tests/e2e/test_ui_content.py`) that fail on leaked identifiers, broken
+  templating tokens, low contrast, or missing labels.
 
 ## Reproduce the Evaluation Scorecard
 
@@ -454,7 +541,8 @@ curl -s -X POST http://localhost:8000/api/v1/rag/query/<thread_id>/review \
 curl -s -X POST http://localhost:8000/api/v1/rag/query \
   -H "Content-Type: application/json" \
   -d '{"question":"What is the capital of France?"}'
-# The system will respond that it doesn't know rather than hallucinating
+# → escalates to human review (escalated: true) instead of hallucinating;
+#   resume it through the /review endpoint above
 ```
 
 ## 🔒 Security
@@ -468,10 +556,21 @@ daily LLM budget gate, and CI that uses `pull_request` (never
 
 ## Known Limitations & Next Steps
 
+- **Latency targets are currently missed on the cloud-backed path** — the
+  measured scorecard reports p50 3.6 s / p95 7.2 s vs the ≤ 3 s / ≤ 6 s
+  targets, driven by grader round-trips and Neo4j Aura cold-starts. The panel
+  reports this honestly; tightening means trimming judge calls or warming the
+  graph backend.
+- Neo4j Aura free tier "sleeps" after inactivity — the system degrades to
+  vector-only and recovers, but the first query after idle can exceed p95.
+- The Prompt Registry is a **single-writer, file-based** store — right for a
+  single operator, not a multi-author team (move to a DB + optimistic locking
+  next).
+- A/B runs on an 18-case dataset produce real but **noisy** deltas — the gate
+  requires threshold compliance plus no regression; a larger dataset would
+  tighten confidence intervals.
 - RAGAS metrics are implemented via a self-contained LLM-as-judge (the `ragas`
   package is currently incompatible with LangChain 1.x).
-- Neo4j Aura free tier "sleeps" after inactivity, so the first query after idle
-  can exceed the documented p95 latency.
 - Single-user authentication (no multi-tenant admin).
 - SQLite checkpoints/usage are not migrated to Postgres.
 
