@@ -1,0 +1,58 @@
+name: Live evaluation (EDD)
+
+# Manual or weekly only — never on pull_request: it spends real API budget and
+# uses production credentials. The offline suite in ci.yml stays the PR gate.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: RAGAS scorecard + retrieval baselines
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      NEO4J_URI: ${{ secrets.NEO4J_URI }}
+      NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+      NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+      TRACING_PROVIDER: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run the EDD scorecard (cost-capped)
+        run: python evaluation/run_ragas.py --max-cost-usd 0.50
+
+      # Fails when a threshold regresses or the scorecard's recorded dataset /
+      # prompt versions no longer match the repo's (stale = unverified claim).
+      - name: Enforce EDD thresholds on the fresh scorecard
+        run: python evaluation/check_scorecard.py
+
+      - name: Retrieval baselines (cost-capped)
+        run: >
+          python evaluation/run_baseline.py
+          --max-cost-usd 1.00
+          --output evaluation/results/baseline_comparison.json
+
+      - name: Upload evaluation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-results
+          path: evaluation/results/
+          retention-days: 90
