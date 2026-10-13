@@ -9,6 +9,7 @@ every caption stays on screen long enough to be read.
 """
 
 import contextlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,19 @@ def _ffmpeg() -> str:
             "imageio-ffmpeg missing — `uv pip install imageio-ffmpeg`"
         ) from exc
     return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def _black_lead(video: Path) -> float:
+    """Seconds of initial black — browser startup before the first paint."""
+    out = subprocess.run(
+        [
+            _ffmpeg(), "-i", str(video),
+            "-vf", "blackdetect=d=0.1:pix_th=0.08", "-an", "-f", "null", "-",
+        ],
+        check=True, capture_output=True, text=True,
+    ).stderr
+    m = re.search(r"black_start:0[\d.]* black_end:(\d+\.?\d*)", out)
+    return float(m.group(1)) if m else 0.0
 
 
 def record() -> None:
@@ -130,13 +144,19 @@ def record() -> None:
 
         palette = Path(tmpdir) / "palette.png"
         ffmpeg = _ffmpeg()
+        # Trim the dead black lead (browser launch before first paint) so the
+        # GIF starts on the landing, not on a black screen.
+        seek = ["-ss", f"{_black_lead(webm):.2f}"]
         subprocess.run(
-            [ffmpeg, "-y", "-i", str(webm), "-vf", "palettegen", str(palette)],
+            [
+                ffmpeg, "-y", *seek, "-i", str(webm),
+                "-vf", "palettegen", str(palette),
+            ],
             check=True, capture_output=True,
         )
         subprocess.run(
             [
-                ffmpeg, "-y", "-i", str(webm), "-i", str(palette),
+                ffmpeg, "-y", *seek, "-i", str(webm), "-i", str(palette),
                 "-lavfi",
                 "setpts=1.0*PTS,fps=14,scale=960:-1:flags=lanczos [x]; "
                 "[x][1:v] paletteuse",
