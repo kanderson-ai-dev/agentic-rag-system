@@ -3,6 +3,9 @@ name = "agentic-rag-system"
 version = "0.1.0"
 description = "Agentic RAG & Knowledge Systems - a Self-RAG microservice built with FastAPI and LangGraph"
 readme = "README.md"
+authors = [
+    {name = "Kaarsten Anderson", email = "contact@kaarstenanderson.com"},
+]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.0,<1.0.0",

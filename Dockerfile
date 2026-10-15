@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.authors="Kaarsten Anderson <contact@kaarstenanderson.com>"
+
 WORKDIR /app
 
 # Install runtime dependencies (no dev/test tooling).
