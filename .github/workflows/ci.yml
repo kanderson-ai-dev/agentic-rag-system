@@ -92,6 +92,29 @@ jobs:
       - name: Build image
         run: docker build -t agentic-rag-system:ci .
 
+  e2e:
+    name: Browser suite (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx playwright
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
+      - name: Run e2e suite
+        # No secrets in env on purpose: the suite serves a deterministic
+        # stub backend and must stay green with zero credentials.
+        env: {}
+        run: pytest -m e2e -q
+
   evaluate:
     name: Evaluate (EDD scorecard)
     runs-on: ubuntu-latest
@@ -118,4 +141,14 @@ jobs:
           fi
       - name: Run evaluation
         if: steps.check.outputs.skip != 'true'
-        run: python evaluation/run_ragas.py
+        run: python evaluation/run_ragas.py --max-cost-usd 0.50
+      - name: Gate the scorecard on the EDD thresholds
+        if: steps.check.outputs.skip != 'true'
+        run: python evaluation/check_scorecard.py
+      - name: Upload scorecard
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragas-scorecard
+          path: evaluation/results/ragas_scorecard.json
+          if-no-files-found: error

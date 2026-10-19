@@ -3,7 +3,8 @@
 ## Setup
 
 ```bash
-uv sync
+uv sync                              # includes playwright (dev group)
+uv run playwright install chromium   # once — only needed for `pytest -m e2e`
 cp .env.example .env   # OPENAI_API_KEY enables the RAG path; vector/graph/auth all have local fallbacks
 uv run uvicorn app.main:app --reload
 ```
