@@ -37,6 +37,9 @@ each surface's directory stays self-contained under its mount.
 | `console/js/toast.js` | Transient notifications (`showToast`), `aria-live` announcements (`announce`), global error handling. |
 | `console/js/chat.js` | Chat experience: messages, typing, copy, adaptive composer, query submission. |
 | `console/js/review.js` | Human-review modal (HITL). |
+| `console/js/prompts.js` | Prompt Registry tab: versions, diff, candidate editor, async A/B, promote/rollback. |
+| `console/js/theme-init.js` | Blocking anti-FOUC script that applies the saved theme before first paint. |
+| `js/labels.js` | Human-readable label dictionary shared by both surfaces (no raw `snake_case` in the UI). |
 | `console/js/dashboard.js` | Dashboard: metric cards, sortable/paginated table, SVG chart, Quality (EDD). |
 
 ## ES modules (no bundler)
@@ -84,8 +87,8 @@ Two themes defined as token blocks: `[data-theme="dark"]` (default) and
 `[data-theme="light"]`. The header toggle:
 
 1. Applies the theme saved in `localStorage` (`key = "theme"`) before first
-   paint via an inline script in `<head>` (the only inline script — allowed by
-   CSP through its SHA-256 hash).
+   paint via the blocking external script `console/js/theme-init.js` (kept
+   external, not inline, so CSP `script-src 'self'` covers it with no hash).
 2. Falls back to `prefers-color-scheme` when no preference is stored.
 3. On click, flips `<html>`'s `data-theme` and persists to `localStorage`.
 
@@ -192,10 +195,10 @@ Hierarchy and spacing conventions:
 response:
 
 - `default-src 'self'` — everything is same-origin by default.
-- `script-src 'self' 'sha256-…' https://cdn.tailwindcss.com` — the SHA-256 hash
-  covers the console's inline anti-FOUC theme bootstrap (the only inline
-  script); the Tailwind origin is allowed for the landing's no-build utility
-  CSS. Arbitrary inline/eval'd scripts remain forbidden.
+- `script-src 'self' https://cdn.tailwindcss.com` — every script is an external
+  file (including the console's anti-FOUC `theme-init.js`); the Tailwind origin
+  is allowed only for the landing's no-build utility CSS. Inline and eval'd
+  scripts remain forbidden.
 - `style-src 'self' 'unsafe-inline'` — required because the Tailwind CDN
   injects its generated stylesheet as a `<style>` element at runtime.
 - `img-src 'self' data:` — for the inline SVG favicon.

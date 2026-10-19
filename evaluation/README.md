@@ -68,7 +68,7 @@ the point: the scorecard rewards not hallucinating.
 ```
 python evaluation/run_ragas.py \
     --prompt-version generate_answer=2   # repeatable; pins a version without promoting it
-    --retrieval-mode hybrid              # hybrid | vector_only | graph_only | no_retrieval
+    --retrieval-mode hybrid              # only `hybrid` here; other modes run via run_baseline.py
     --max-cost-usd 0.50                  # abort between cases past this spend
     --output results/my_scorecard.json
 ```
@@ -91,6 +91,9 @@ retrieval-mode comparison reads.
 
 - `run_ragas.py` — local scorecard + `results/history/` + `TREND.md`
 - `run_evaluation.py` — provider experiment: LangSmith `evaluate()` or Langfuse `run_experiment()` per `TRACING_PROVIDER` (local scorecard fallback)
+- `run_baseline.py` — retrieval-mode comparison (`hybrid`, `vector_only`, `graph_only`, `no_retrieval`)
+- `ab_test.py` — prompt A/B engine feeding the promotion gate
+- `check_scorecard.py` — EDD threshold + provenance-freshness gate
 - `harness.py` — shared case runner / scorer / provenance
 - `evaluators.py` — the LLM-judged metric functions
 - `results/` — scorecards, history, A/B results (`ab/`)

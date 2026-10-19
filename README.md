@@ -8,12 +8,12 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-async%20API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-agent%20orchestration-1C3C3C)](https://github.com/langchain-ai/langgraph)
 [![CI](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml/badge.svg)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/badge/linting-ruff-red)](https://github.com/astral-sh/ruff)
 [![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)](https://mypy-lang.org/)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-![The public landing answering a real question](docs/screenshots/rag-demo.gif)
+![Landing answer, then the prompt-registry workflow (offline demo run on a deterministic stub backend)](docs/screenshots/rag-demo.gif)
 
 </div>
 
@@ -30,9 +30,12 @@ functional tests.
 This is the tier above a RAG demo: retrieval is hybrid (vector + graph),
 generation is graded against its own sources, low-confidence answers escalate
 to a human instead of hallucinating, and every number on this page is
-reproducible — `python evaluation/run_ragas.py` regenerates the scorecard, and
-the screenshots below are captured from the real running app by
-`scripts/ui_qa.py` (and `scripts/record_demo.py` for the GIF above).
+reproducible — `python evaluation/run_ragas.py` regenerates the scorecard.
+The Langfuse/LangSmith/scorecard captures come from live runs; the UI captures
+in `docs/ui-qa/` and the GIF above are produced offline by `scripts/ui_qa.py`
+and `scripts/record_demo.py` — the real UI and real graph edges served over a
+deterministic stub backend (fake chains, canned A/B result), so they are
+reproducible without API keys and never show live model output.
 
 It demonstrates that I can **operate** an agentic system with measurable
 evidence — not just wire one up.
@@ -68,8 +71,8 @@ evidence — not just wire one up.
 - 🔓 **Open by design, auth when you need it** — the demo runs with zero
   credentials; JWT + bcrypt + rate-limited `/auth/login` are ready when the API
   needs protection.
-- 🧪 **CI green with zero secrets** — the suite (357 tests + 24 browser e2e,
-  95% coverage on `app/`) runs fully offline with stubs; cloud-backed paths
+- 🧪 **CI green with zero secrets** — the suite (363 tests + 24 browser e2e,
+  93% coverage on `app/`) runs fully offline with stubs; cloud-backed paths
   skip cleanly without credentials, so a fork clones and passes.
 
 ---
@@ -100,7 +103,9 @@ are published as measured, not tuned.
 The scorecard carries its provenance in `meta` (dataset hash, prompt versions,
 backends, git sha). `python evaluation/check_scorecard.py` — run in the weekly
 live workflow — fails when either the thresholds regress **or** the committed
-scorecard was produced by a different configuration than the current one.
+scorecard was produced by a different configuration than the current one. On
+every PR, the offline `tests/test_scorecard_freshness.py` applies the same two
+checks to the *committed* scorecard (CI never re-spends tokens to judge a PR).
 
 ### Retrieval-mode baseline (measured, same dataset)
 
@@ -213,7 +218,7 @@ retrieval, or the model change.
 | Cost | avg cost per query (`gpt-4o-mini`) | ≤ $0.01 | `usage_store` + `/api/v1/dashboard/performance` |
 | CI reliability | GitHub Actions build | green | `.github/workflows/ci.yml` |
 | Supply-chain security | `gitleaks` / `pip-audit` / CodeQL findings | 0 | CI |
-| Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 95%** | CI |
+| Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 93%** | CI |
 | Static typing | `mypy --strict` on `app/` | 0 errors | CI |
 
 ---
@@ -284,8 +289,9 @@ graph TD
 ## ⚡ Features
 
 - **Hybrid retrieval for anti-hallucination** — Pinecone/Chroma (vector) +
-  Neo4j/NetworkX (graph), with 100% local fallback so the system works out of
-  the box with no external accounts.
+  Neo4j/NetworkX (graph), with a local fallback for both stores so no Pinecone
+  or Neo4j account is needed (an OpenAI key is still required for embeddings
+  and generation).
 - **Self-RAG correction loop** — retrieve → grade → generate / rewrite /
   escalate.
 - **Human-in-the-loop** — approve / retry / override when auto-correction fails.
@@ -317,18 +323,20 @@ Pinecone / Chroma · Neo4j / NetworkX · SQLite · GitHub Actions · Docker.
 ```
 app/
 ├── api/v1/routes/   # auth, rag, review, dashboard, health, prompts
-├── core/            # config, security, logging, metrics, cost_tracking, rate_limit
+├── core/            # config, security, dependencies, logging, metrics, tracing,
+│                    # cache, cost_tracking, rate_limit
 ├── graph/           # state, nodes, edges, graph, prompts, guardrails
-└── services/        # llm, vector_store, graph_store, usage_store,
+└── services/        # llm, vector_store, graph_store, knowledge_base, usage_store,
                      # prompt_registry, ab_test_jobs, promotion_gate
-evaluation/          # dataset, evaluators, run_ragas, run_evaluation,
+evaluation/          # dataset, evaluators, harness, run_ragas, run_evaluation,
                      # run_baseline, ab_test, check_scorecard
 prompts/             # versioned prompt artifacts + AUDIT.jsonl chain
 frontend/
 ├── landing/         # minimalist public landing (`/`, Tailwind via CDN)
 ├── console/         # operator console (`/console`: chat, dashboard, HITL, prompts)
 └── js/              # shared ES modules (util, api, markdown, labels)
-scripts/             # ingest_knowledge_base, ui_qa, record_demo, capture_screenshots
+scripts/             # ingest_knowledge_base, check_credentials, ui_qa, record_demo,
+                     # capture_screenshots
 tests/               # pytest suite (+ e2e/ browser checks, opt-in marker)
 docs/
 ├── functional-qa/   # scenario checklist + live observations
@@ -425,6 +433,8 @@ question or answer content.
 | Endpoint | What it reports |
 |---|---|
 | `GET /api/v1/dashboard/summary` | session totals — cost, latency, blocked/escalated |
+| `GET /api/v1/dashboard/recent` | the session's most recent requests (numeric metadata only) |
+| `GET /api/v1/dashboard/quality` | latest committed EDD scorecard + retrieval-mode comparison, with pass/fail flags |
 | `GET /api/v1/dashboard/performance` | p50/p95 per node + end-to-end, cost trend, per-version aggregates, daily budget, human-vs-agent |
 | `GET /metrics` | Prometheus histograms (`agent_node_latency_seconds`, `agent_llm_cost_usd_total`, …) |
 | `GET /health` | backend status **plus the daily-budget position** |
@@ -481,9 +491,10 @@ The image runs as a non-root user and injects secrets at runtime via `.env`.
 
 ```bash
 uv run pytest -v                      # core suite (no credentials required)
-uv run pytest --cov=app               # coverage report — 95% on app/ measured
+uv run pytest --cov=app               # coverage report — 93% on app/ measured
 uv run pytest -m e2e                  # browser-driven functional + content rules
-                                      # (opt-in: needs playwright + chromium)
+                                      # (opt-in: first run `uv pip install playwright`
+                                      #  and `playwright install chromium`)
 uv run ruff check .                   # lint
 uv run mypy --strict app/             # strict type check (0 errors)
 ```
@@ -511,7 +522,8 @@ claims above are inspectable, not just asserted:
 ```bash
 python evaluation/run_ragas.py            # writes evaluation/results/ragas_scorecard.json
 python evaluation/run_ragas.py --report   # regenerates TREND.md from history
-python evaluation/run_evaluation.py       # runs a LangSmith experiment
+python evaluation/run_evaluation.py       # provider experiment per TRACING_PROVIDER
+                                          # (langsmith / langfuse; `none` = local scorecard only)
 ```
 
 ## curl Examples
@@ -541,7 +553,7 @@ curl -s -X POST http://localhost:8000/api/v1/rag/query/<thread_id>/review \
 curl -s -X POST http://localhost:8000/api/v1/rag/query \
   -H "Content-Type: application/json" \
   -d '{"question":"What is the capital of France?"}'
-# → escalates to human review (escalated: true) instead of hallucinating;
+# → returns status "interrupted" (human review) instead of hallucinating;
 #   resume it through the /review endpoint above
 ```
 
