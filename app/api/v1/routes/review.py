@@ -14,6 +14,7 @@ from app.api.v1.schemas import HumanReviewRequest, QueryResponse
 from app.core import tracing
 from app.core.config import get_settings
 from app.core.dependencies import enforce_daily_budget, get_graph, verify_jwt
+from app.core.metrics import agent_output_flagged_total
 from app.core.rate_limit import limiter, request_rate_limit
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
@@ -59,4 +60,6 @@ def review(
         )
     if trace_id:
         response.headers["X-Trace-Id"] = trace_id
+    if result.get("output_flagged"):
+        agent_output_flagged_total.inc()
     return QueryResponse.from_graph_result(result, thread_id)

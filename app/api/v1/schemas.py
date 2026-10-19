@@ -66,10 +66,11 @@ class QueryResponse(BaseModel):
 
         answer = result.get("generation", "")
         # Honest sources: an "I don't know" refusal used none of the retrieved
-        # documents, and the same source can appear twice (vector + graph hit
-        # the same underlying document), so report each source once, in order.
+        # documents, an output-flagged answer was replaced by the safe refusal
+        # (grounded in nothing), and the same source can appear twice (vector +
+        # graph hit the same document), so report each source once, in order.
         sources: list[str] = []
-        if answer.strip() != REFUSAL_TEXT:
+        if answer.strip() != REFUSAL_TEXT and not result.get("output_flagged"):
             seen: set[str] = set()
             for doc in result.get("documents", []):
                 source = doc.metadata.get("source", "unknown")

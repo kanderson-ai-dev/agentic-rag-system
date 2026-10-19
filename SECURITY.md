@@ -28,7 +28,7 @@ checklist for closing out each phase.
 |---|---|---|
 | LLM01 Prompt Injection | Input guardrail; prompt mutations gated behind JWT + `PROMPT_REGISTRY_WRITE_ENABLED` and rate-limited | `app/graph/guardrails.py`, `app/api/v1/routes/prompts.py` |
 | LLM10 Unbounded Consumption | Per-IP rate limiting on the request path (429 + `Retry-After`) and a deterministic daily LLM budget enforced in-graph before any spend | `app/core/rate_limit.py`, `app/graph/nodes.py` (`budget_gate`) |
-| LLM02 Insecure Output Handling | Output guardrail | `app/graph/guardrails.py` |
+| LLM02 Insecure Output Handling | Output guardrail: generations that leak a system prompt or reflect injected instructions are replaced with a safe refusal before leaving the graph, and counted (`agent_output_flagged_total`) | `app/graph/guardrails.py`, `app/graph/nodes.py` |
 | LLM03 Training Data Poisoning | Model not re-trained; prompt artifact integrity via hash-chained audit log on every registry mutation | `app/services/prompt_registry.py` |
 | LLM04 Model DoS | Input length limit, bounded `top_k` | `app/graph/guardrails.py`, `app/services/vector_store.py` |
 | LLM05 Supply Chain Vulnerabilities | `pip-audit`, pinned versions | CI |

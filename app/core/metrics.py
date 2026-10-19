@@ -24,6 +24,10 @@ agent_blocked_requests_total = Counter(
     "agent_blocked_requests_total",
     "Total requests blocked by the input guardrail.",
 )
+agent_output_flagged_total = Counter(
+    "agent_output_flagged_total",
+    "Total generations replaced by the output guardrail.",
+)
 agent_human_review_total = Counter(
     "agent_human_review_total",
     "Total requests escalated to human review.",

@@ -21,6 +21,7 @@ from app.core.metrics import (
     agent_blocked_requests_total,
     agent_human_review_total,
     agent_llm_cost_usd_total,
+    agent_output_flagged_total,
 )
 from app.core.rate_limit import limiter, request_rate_limit
 from app.graph.graph import initial_state
@@ -97,6 +98,8 @@ def query(
 
     if result.get("blocked"):
         agent_blocked_requests_total.inc()
+    if result.get("output_flagged"):
+        agent_output_flagged_total.inc()
     if result.get("__interrupt__"):
         agent_human_review_total.inc()
     if cost_usd > 0:

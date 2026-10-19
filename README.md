@@ -298,8 +298,11 @@ graph TD
 - **Prompt Registry** — versioned prompt artifacts with a hash-chained audit
   log, gated A/B promotion, rollback, and a console workflow (browse → diff →
   candidate → A/B → promote).
-- **Input/output guardrails** — prompt-injection detection and output screening
-  (OWASP LLM01/LLM02).
+- **Input/output guardrails** — prompt-injection detection plus output
+  screening (OWASP LLM01/LLM02): a generation that leaks a system prompt or
+  reflects injected instructions is replaced with a safe refusal and counted.
+  Trade-off: an answer that legitimately *quotes* an injection phrase is also
+  replaced.
 - **JWT authentication (API-level, optional)** — single-user login with bcrypt +
   rate-limited `/auth/login`, off by default (open quickstart).
 - **Abuse & spend protection** — per-IP rate limiting on the request path

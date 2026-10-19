@@ -58,6 +58,12 @@ def _llm_config(prompt_name: str, versions: dict[str, int]) -> dict[str, Any]:
 # contributes an empty result set instead of stalling the request.
 _BACKEND_TIMEOUT_SECONDS = 8.0
 
+# Generic refusal shared by the blocked-input path (`error_output`) and the
+# output guardrail: a flagged generation is replaced with this text before it
+# can leave the graph, so a leaked system prompt or reflected injection never
+# reaches the caller.
+SAFE_REFUSAL = "I'm sorry, but I can't help with that request."
+
 
 def _scores(grading_result: Any) -> list[str]:
     """Extract the ordered 'yes'/'no' verdicts from a batched grader result.
@@ -412,12 +418,18 @@ def make_guardrail_node(max_length: int = DEFAULT_MAX_QUESTION_CHARS) -> NodeFn:
 
 
 def make_output_guardrail_node() -> NodeFn:
-    """Screen the final generation for system-prompt leakage or reflected injection."""
+    """Screen the final generation for system-prompt leakage or reflected injection.
+
+    A flagged generation is replaced with ``SAFE_REFUSAL`` — the same generic
+    refusal the blocked-input path produces — while ``output_flagged`` stays
+    True so metrics, the dashboard and tests can still observe the event.
+    """
 
     @timed_node("output_guardrail")
     def output_guardrail_node(state: GraphState) -> dict[str, Any]:
-        flagged = screen_output(state["generation"]) is not None
-        return {"output_flagged": flagged}
+        if screen_output(state["generation"]) is None:
+            return {"generation": state["generation"], "output_flagged": False}
+        return {"generation": SAFE_REFUSAL, "output_flagged": True}
 
     return output_guardrail_node
 
@@ -427,6 +439,6 @@ def make_error_output_node() -> NodeFn:
 
     @timed_node("error_output")
     def error_output_node(state: GraphState) -> dict[str, Any]:
-        return {"generation": "I'm sorry, but I can't help with that request."}
+        return {"generation": SAFE_REFUSAL}
 
     return error_output_node

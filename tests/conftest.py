@@ -167,13 +167,16 @@ def build_test_graph(
     max_retries: int = 2,
     relevant_keyword: str = "LangGraph",
     graph_search_fn: Any | None = None,
+    generation_chain: Any | None = None,
     budget_check: Any | None = None,
 ):
     """Build a fully-stubbed, deterministic Self-RAG graph for tests."""
     return build_graph(
         retriever=retriever if retriever is not None else FakeRetriever(documents or []),
         grader_chain=FakeGrader(relevant_keyword),
-        generation_chain=FakeGenerationChain(),
+        generation_chain=(
+            generation_chain if generation_chain is not None else FakeGenerationChain()
+        ),
         rewriter_chain=FakeRewriterChain(),
         graph_search_fn=graph_search_fn if graph_search_fn is not None else _no_graph_results,
         checkpointer=InMemorySaver(),
