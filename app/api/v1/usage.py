@@ -9,21 +9,13 @@ from typing import Any
 from fastapi import Request
 
 from app.core.config import get_settings
-from app.core.cost_tracking import calculate_cost_usd
+from app.core.cost_tracking import TokenUsageCallbackHandler, calculate_cost_usd
 from app.core.metrics import (
     agent_blocked_requests_total,
     agent_human_review_total,
     agent_llm_cost_usd_total,
     agent_output_flagged_total,
 )
-
-
-def reset_token_handler(request: Request) -> None:
-    """Zero the shared token counters before a graph run."""
-    handler = getattr(request.app.state, "token_handler", None)
-    if handler is not None:
-        handler.prompt_tokens = 0
-        handler.completion_tokens = 0
 
 
 def record_request_usage(
@@ -33,15 +25,15 @@ def record_request_usage(
     result: dict[str, Any],
     latency_ms: int,
     session_id: str | None,
+    token_handler: TokenUsageCallbackHandler,
 ) -> float:
     """Persist usage metadata for a finished graph run and bump counters.
 
     Returns the request's cost in USD.
     """
     settings = get_settings()
-    token_handler = getattr(request.app.state, "token_handler", None)
-    prompt_tokens = token_handler.prompt_tokens if token_handler else 0
-    completion_tokens = token_handler.completion_tokens if token_handler else 0
+    prompt_tokens = token_handler.prompt_tokens
+    completion_tokens = token_handler.completion_tokens
     cost_usd = calculate_cost_usd(
         prompt_tokens,
         completion_tokens,

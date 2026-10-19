@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.graph = None
     app.state.graph_error = None
     app.state.usage_store = UsageStore(settings.usage_db_path)
+    owned_store = app.state.usage_store
     app.state.token_handler = TokenUsageCallbackHandler()
 
     with SqliteSaver.from_conn_string(str(checkpoint_path)) as checkpointer:
@@ -56,6 +57,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
 
         tracing.shutdown()
+        # Tests inject their own store into app.state: close only the one the
+        # lifespan created, and always clear the attribute so a stale (or
+        # closed) reference never leaks into the next lifespan cycle.
+        store = getattr(app.state, "usage_store", None)
+        if store is owned_store:
+            store.close()
+        if store is not None:
+            del app.state.usage_store
     logger.info("Application shutdown complete")
 
 

@@ -12,9 +12,10 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from app.api.v1.schemas import HumanReviewRequest, QueryResponse
-from app.api.v1.usage import record_request_usage, reset_token_handler
+from app.api.v1.usage import record_request_usage
 from app.core import tracing
 from app.core.config import get_settings
+from app.core.cost_tracking import track_request_usage
 from app.core.dependencies import (
     enforce_daily_budget,
     get_graph,
@@ -65,13 +66,15 @@ def review(
 
     settings = get_settings()
     start = time.perf_counter()
-    reset_token_handler(request)
-    with tracing.trace_run(
-        settings,
-        name="rag.review",
-        metadata={"thread_id": thread_id},
-        tags=["api", "hitl"],
-    ) as trace_id:
+    with (
+        track_request_usage() as token_handler,
+        tracing.trace_run(
+            settings,
+            name="rag.review",
+            metadata={"thread_id": thread_id},
+            tags=["api", "hitl"],
+        ) as trace_id,
+    ):
         result = graph.invoke(
             Command(resume=resume),
             config={
@@ -88,5 +91,6 @@ def review(
         result=result,
         latency_ms=latency_ms,
         session_id=session_id,
+        token_handler=token_handler,
     )
     return QueryResponse.from_graph_result(result, thread_id)

@@ -6,6 +6,7 @@ only need to expose an `.invoke()` method, so unit tests can pass in simple
 stub objects instead of real LangChain runnables or network calls.
 """
 
+import contextvars
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol, cast
@@ -164,11 +165,22 @@ def make_hybrid_retrieve_node(
         executor = ThreadPoolExecutor(max_workers=2)
         try:
             # Submit both arms first so they run concurrently; only then wait.
+            # Each submission gets its own copy of the calling context (a
+            # Context may only be entered by one thread at a time) so
+            # contextvars — the per-request token accumulator — stay visible.
             vector_future = (
-                executor.submit(retriever.invoke, question) if use_vector else None
+                executor.submit(
+                    contextvars.copy_context().run, retriever.invoke, question
+                )
+                if use_vector
+                else None
             )
             graph_future = (
-                executor.submit(graph_search_fn, question) if use_graph else None
+                executor.submit(
+                    contextvars.copy_context().run, graph_search_fn, question
+                )
+                if use_graph
+                else None
             )
             documents: list[Document] = []
             if vector_future is not None:
@@ -237,7 +249,10 @@ def make_grade_documents_node(
             )
         else:
             with ThreadPoolExecutor(max_workers=2) as executor:
+                # Fresh context copies per submission so the request-scoped
+                # token accumulator is visible inside the pool threads.
                 scores_future = executor.submit(
+                    contextvars.copy_context().run,
                     grader_chain.invoke,
                     {
                         "question": question,
@@ -247,6 +262,7 @@ def make_grade_documents_node(
                     _llm_config("grade_documents", versions),
                 )
                 generation_future = executor.submit(
+                    contextvars.copy_context().run,
                     speculative_generation_chain.invoke,
                     {
                         "context": context,

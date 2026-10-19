@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from langgraph.graph.state import CompiledStateGraph
 
 from app.api.v1.schemas import QueryRequest, QueryResponse
-from app.api.v1.usage import record_request_usage, reset_token_handler
+from app.api.v1.usage import record_request_usage
 from app.core import tracing
 from app.core.config import get_settings
+from app.core.cost_tracking import track_request_usage
 from app.core.dependencies import (
     BUDGET_EXCEEDED_DETAIL,
     get_graph,
@@ -43,15 +44,16 @@ def query(
     thread_id = payload.thread_id or str(uuid.uuid4())
     settings = get_settings()
 
-    reset_token_handler(request)
-
-    with tracing.trace_run(
-        settings,
-        name="rag.query",
-        session_id=session_id,
-        metadata={"thread_id": thread_id},
-        tags=["api", "rag"],
-    ) as trace_id:
+    with (
+        track_request_usage() as token_handler,
+        tracing.trace_run(
+            settings,
+            name="rag.query",
+            session_id=session_id,
+            metadata={"thread_id": thread_id},
+            tags=["api", "rag"],
+        ) as trace_id,
+    ):
         result = graph.invoke(
             initial_state(payload.question),
             config={
@@ -68,6 +70,7 @@ def query(
         result=result,
         latency_ms=latency_ms,
         session_id=session_id,
+        token_handler=token_handler,
     )
 
     if result.get("budget_exhausted"):

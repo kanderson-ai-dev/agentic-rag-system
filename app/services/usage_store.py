@@ -8,6 +8,7 @@ import contextlib
 import json
 import math
 import sqlite3
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,8 +21,12 @@ class UsageStore:
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         # `check_same_thread=False` allows the store to be created in the
-        # lifespan and used from FastAPI's threadpool request handlers.
+        # lifespan and used from FastAPI's threadpool request handlers; the
+        # lock serializes concurrent access to the shared connection.
+        self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS usage (
@@ -67,38 +72,44 @@ class UsageStore:
         prompt_versions: dict[str, int] | None = None,
         node_latencies: dict[str, float] | None = None,
     ) -> None:
-        self._conn.execute(
-            """
-            INSERT INTO usage
-                (timestamp, thread_id, session_id, prompt_tokens, completion_tokens,
-                 cost_usd, latency_ms, blocked, escalated, retry_count,
-                 prompt_versions, node_latencies)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                datetime.now(UTC).isoformat(),
-                thread_id,
-                session_id,
-                prompt_tokens,
-                completion_tokens,
-                cost_usd,
-                latency_ms,
-                int(blocked),
-                int(escalated),
-                retry_count,
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO usage
+                    (timestamp, thread_id, session_id, prompt_tokens,
+                     completion_tokens, cost_usd, latency_ms, blocked,
+                     escalated, retry_count, prompt_versions, node_latencies)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
-                    json.dumps(prompt_versions, sort_keys=True)
-                    if prompt_versions
-                    else None
+                    datetime.now(UTC).isoformat(),
+                    thread_id,
+                    session_id,
+                    prompt_tokens,
+                    completion_tokens,
+                    cost_usd,
+                    latency_ms,
+                    int(blocked),
+                    int(escalated),
+                    retry_count,
+                    (
+                        json.dumps(prompt_versions, sort_keys=True)
+                        if prompt_versions
+                        else None
+                    ),
+                    (
+                        json.dumps(node_latencies, sort_keys=True)
+                        if node_latencies
+                        else None
+                    ),
                 ),
-                (
-                    json.dumps(node_latencies, sort_keys=True)
-                    if node_latencies
-                    else None
-                ),
-            ),
-        )
-        self._conn.commit()
+            )
+            self._conn.commit()
+
+    def close(self) -> None:
+        """Close the underlying connection — called from the app lifespan."""
+        with self._lock:
+            self._conn.close()
 
     def summary(self, session_id: str | None = None) -> dict[str, Any]:
         """Aggregate usage metrics.
@@ -111,20 +122,21 @@ class UsageStore:
         """
         where = "WHERE session_id = ?" if session_id is not None else ""
         params = (session_id,) if session_id is not None else ()
-        row = self._conn.execute(
-            f"""
-            SELECT
-                COUNT(*),
-                COALESCE(SUM(prompt_tokens), 0),
-                COALESCE(SUM(completion_tokens), 0),
-                COALESCE(SUM(cost_usd), 0),
-                COALESCE(AVG(latency_ms), 0),
-                COALESCE(SUM(blocked), 0),
-                COALESCE(SUM(escalated), 0)
-            FROM usage {where}
-            """,
-            params,
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                f"""
+                SELECT
+                    COUNT(*),
+                    COALESCE(SUM(prompt_tokens), 0),
+                    COALESCE(SUM(completion_tokens), 0),
+                    COALESCE(SUM(cost_usd), 0),
+                    COALESCE(AVG(latency_ms), 0),
+                    COALESCE(SUM(blocked), 0),
+                    COALESCE(SUM(escalated), 0)
+                FROM usage {where}
+                """,
+                params,
+            ).fetchone()
         return {
             "total_requests": row[0],
             "total_prompt_tokens": row[1],
@@ -140,17 +152,18 @@ class UsageStore:
     ) -> list[dict[str, Any]]:
         where = "WHERE session_id = ?" if session_id is not None else ""
         params: tuple[Any, ...] = (session_id, limit) if session_id is not None else (limit,)
-        rows = self._conn.execute(
-            f"""
-            SELECT timestamp, thread_id, prompt_tokens, completion_tokens,
-                   cost_usd, latency_ms, blocked, escalated, retry_count,
-                   prompt_versions
-            FROM usage {where}
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            params,
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                f"""
+                SELECT timestamp, thread_id, prompt_tokens, completion_tokens,
+                       cost_usd, latency_ms, blocked, escalated, retry_count,
+                       prompt_versions
+                FROM usage {where}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
         return [
             {
                 "timestamp": row[0],
@@ -182,11 +195,12 @@ class UsageStore:
         aggregates: dict[int, dict[str, Any]] = {}
         where = "AND session_id = ?" if session_id is not None else ""
         params = (session_id,) if session_id is not None else ()
-        rows = self._conn.execute(
-            f"SELECT prompt_versions, cost_usd, latency_ms FROM usage "
-            f"WHERE prompt_versions IS NOT NULL {where}",
-            params,
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT prompt_versions, cost_usd, latency_ms FROM usage "
+                f"WHERE prompt_versions IS NOT NULL {where}",
+                params,
+            ).fetchall()
         for versions_json, cost_usd, latency_ms in rows:
             version = json.loads(versions_json).get("generate_answer")
             if version is None:
@@ -216,11 +230,12 @@ class UsageStore:
         protects the deployment's wallet, not one visitor.
         """
         today = datetime.now(UTC).date().isoformat()
-        row = self._conn.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM usage "
-            "WHERE substr(timestamp, 1, 10) = ?",
-            (today,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0) FROM usage "
+                "WHERE substr(timestamp, 1, 10) = ?",
+                (today,),
+            ).fetchone()
         return float(row[0])
 
     def budget_status(self, daily_limit_usd: float) -> dict[str, Any]:
@@ -253,14 +268,15 @@ class UsageStore:
         """
         where = "WHERE session_id = ?" if session_id is not None else ""
         params = (session_id,) if session_id is not None else ()
-        rows = self._conn.execute(
-            f"""
-            SELECT timestamp, prompt_tokens, completion_tokens, cost_usd,
-                   latency_ms, blocked, escalated, node_latencies
-            FROM usage {where}
-            """,
-            params,
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                f"""
+                SELECT timestamp, prompt_tokens, completion_tokens, cost_usd,
+                       latency_ms, blocked, escalated, node_latencies
+                FROM usage {where}
+                """,
+                params,
+            ).fetchall()
 
         latencies = [row[4] for row in rows]
         costs = [row[3] for row in rows]
@@ -283,16 +299,17 @@ class UsageStore:
             for node, samples in sorted(node_samples.items())
         ]
 
-        trend_rows = self._conn.execute(
-            f"""
-            SELECT substr(timestamp, 1, 10) AS day, SUM(cost_usd), COUNT(*)
-            FROM usage {where}
-            GROUP BY day
-            ORDER BY day DESC
-            LIMIT 7
-            """,
-            params,
-        ).fetchall()
+        with self._lock:
+            trend_rows = self._conn.execute(
+                f"""
+                SELECT substr(timestamp, 1, 10) AS day, SUM(cost_usd), COUNT(*)
+                FROM usage {where}
+                GROUP BY day
+                ORDER BY day DESC
+                LIMIT 7
+                """,
+                params,
+            ).fetchall()
         daily_cost_trend = [
             {"date": day, "cost_usd": cost, "requests": count}
             for day, cost, count in reversed(trend_rows)
