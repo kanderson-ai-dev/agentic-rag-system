@@ -202,6 +202,11 @@ response:
 - `style-src 'self' 'unsafe-inline'` — required because the Tailwind CDN
   injects its generated stylesheet as a `<style>` element at runtime.
 - `img-src 'self' data:` — for the inline SVG favicon.
+- **Scoped exception**: `/docs`, `/redoc` and `/docs/oauth2-redirect` get a
+  relaxed policy so the FastAPI docs render — jsdelivr for the Swagger/ReDoc
+  bundles, `'unsafe-inline'` for the inline init script, `blob:` workers for
+  ReDoc search, Google Fonts, and the FastAPI/ReDoc logo origins. Every other
+  path (including `/openapi.json`) keeps the strict policy above.
 
 ## Accessibility and security
 

@@ -39,17 +39,38 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     its generated stylesheet as a ``<style>`` element at runtime; style
     injection cannot execute script, so the risk stays contained. ``img-src``
     additionally allows ``data:`` so the inline SVG favicon loads.
+
+    One path-scoped exception: the FastAPI documentation pages (``/docs``,
+    ``/redoc``, ``/docs/oauth2-redirect``) load Swagger/ReDoc bundles from
+    jsdelivr and boot via an inline init script, so they get a relaxed policy
+    (``'unsafe-inline'`` scripts + jsdelivr, ``blob:`` workers for ReDoc
+    search, Google Fonts, and the FastAPI/ReDoc logo origins). Every other
+    path keeps the strict policy above.
     """
+
+    _DOCS_PATHS = frozenset({"/docs", "/redoc", "/docs/oauth2-redirect"})
+    _CSP_STRICT = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:"
+    )
+    _CSP_DOCS = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "worker-src 'self' blob:; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
+        "https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.redoc.ly"
+    )
 
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://cdn.tailwindcss.com; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:"
+            self._CSP_DOCS if request.url.path in self._DOCS_PATHS else self._CSP_STRICT
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
