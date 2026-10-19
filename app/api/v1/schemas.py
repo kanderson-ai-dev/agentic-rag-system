@@ -47,6 +47,7 @@ class QueryResponse(BaseModel):
     status: Literal["completed", "interrupted"]
     thread_id: str
     answer: str | None = None
+    blocked: bool = False
     sources: list[str] = Field(default_factory=list)
     retries: int = 0
     interrupt: InterruptPayload | None = None
@@ -84,6 +85,7 @@ class QueryResponse(BaseModel):
             status="completed",
             thread_id=thread_id,
             answer=answer,
+            blocked=bool(result.get("blocked", False)),
             sources=sources,
             retries=result.get("retry_count", 0),
             prompt_versions=result.get("prompt_versions") or {},

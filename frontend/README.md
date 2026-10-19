@@ -121,8 +121,9 @@ Tailwind utilities.
 - **Copy answer and sources**: each answer carries a *Copy* button (Clipboard
   API with `execCommand("copy")` fallback) and retrieved sources render as
   chips (`sources` field of `QueryResponse`).
-- **States**: welcome (empty), loading (typing), and error with retry
-  (`addErrorWithRetry`).
+- **States**: welcome (empty), loading (typing), blocked (`blocked` field of
+  `QueryResponse` → system message + "*Request blocked by the input
+  guardrail*" announcement), and error with retry (`addErrorWithRetry`).
 - **Smart auto-scroll** (only when already near the bottom) and an **adaptive
   textarea** that grows with content up to a max height — the same composer
   pattern the landing reuses.

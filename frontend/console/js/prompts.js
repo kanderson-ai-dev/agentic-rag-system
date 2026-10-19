@@ -256,7 +256,7 @@ function renderDiffControls() {
   const selA = mk("diff-a");
   const selB = mk("diff-b");
   selA.value = selected.promoted_version;
-  const other = selected.versions.find((v) => v.version !== selA.value);
+  const other = selected.versions.find((v) => v.version !== Number(selA.value));
   if (other) selB.value = other.version;
   const btn = el("button", {
     type: "button",
@@ -495,6 +495,15 @@ function renderAbPanel() {
   );
 }
 
+// Gate failure strings arrive as "metric_name: explanation" — swap the raw
+// identifier for its human label so the error stays jargon-free.
+function humanFailure(failure) {
+  return String(failure).replace(
+    /^([a-z_]+):/u,
+    (_, key) => `${label("metric", key)}:`
+  );
+}
+
 // --- Confirmation modal (promote / rollback) ------------------------------
 
 function askConfirm(title, text, onConfirm) {
@@ -525,11 +534,11 @@ function askPromote(version) {
         showToast(`v${version} promoted.`, "success");
         await refreshPrompts();
       } catch (error) {
-        const failures = error.message?.failures;
+        const failures = error.detail?.failures;
         showError(
           Array.isArray(failures) && failures.length
-            ? `Promotion blocked: ${failures.join(" · ")}`
-            : `Promotion failed: ${typeof error.message === "string" ? error.message : "gate rejected the evidence"}`
+            ? `Promotion blocked: ${failures.map(humanFailure).join(" · ")}`
+            : `Promotion failed: ${error.message}`
         );
       }
     }
