@@ -51,6 +51,7 @@ from app.graph.nodes import (
     make_transform_query_node,
 )
 from app.graph.state import GraphState
+from app.services.graph_store import GraphStoreService
 from app.services.usage_store import UsageStore
 
 
@@ -196,11 +197,15 @@ def build_default_graph(
     checkpointer: BaseCheckpointSaver[Any],
     token_handler: TokenUsageCallbackHandler | None = None,
     usage_store: UsageStore | None = None,
+    graph_store_service: GraphStoreService | None = None,
 ) -> CompiledStateGraph[Any, None, Any, Any]:
     """Build the production graph, wired with real LLM and hybrid retrieval.
 
     ``usage_store`` feeds the in-graph daily-budget gate: when omitted the
     gate is a pass-through (tests and offline tooling need no usage db).
+    ``graph_store_service`` may be injected by the caller (the lifespan does,
+    so it can close the Neo4j driver at shutdown); when omitted it is built
+    here and left for the process to clean up.
     """
     from app.services.graph_store import build_graph_store_service
     from app.services.llm import (
@@ -213,7 +218,7 @@ def build_default_graph(
 
     llm = build_chat_model(settings, token_handler)
     vector_store_service = build_vector_store_service(settings)
-    graph_store_service = build_graph_store_service(settings)
+    graph_store_service = graph_store_service or build_graph_store_service(settings)
 
     # Eagerly load the prompt registry and publish the promoted versions, so a
     # broken/missing prompts/ tree surfaces as a startup error instead of a

@@ -496,8 +496,8 @@ The image runs as a non-root user and injects secrets at runtime via `.env`.
 uv run pytest -v                      # core suite (no credentials required)
 uv run pytest --cov=app               # coverage report — 93% on app/ measured
 uv run pytest -m e2e                  # browser-driven functional + content rules
-                                      # (opt-in: first run `uv pip install playwright`
-                                      #  and `playwright install chromium`)
+                                      # (opt-in: playwright ships with `uv sync`;
+                                      #  run `playwright install chromium` once)
 uv run ruff check .                   # lint
 uv run mypy --strict app/             # strict type check (0 errors)
 ```

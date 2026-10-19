@@ -69,7 +69,21 @@ class TestNeo4jInjectionDefense:
         service.graph_search("langgraph")
         assert service._driver.session_obj.query is not None
         assert "$terms" in service._driver.session_obj.query
-        assert service._driver.session_obj.params == {"terms": ["langgraph"]}
+        assert "$limit" in service._driver.session_obj.query
+        assert service._driver.session_obj.params == {
+            "terms": ["langgraph"],
+            "limit": 5,
+        }
+
+    def test_query_string_has_no_interpolated_values(self) -> None:
+        # Every dynamic value is a `$`-bound parameter — nothing is formatted
+        # into the Cypher text itself.
+        service = _neo4j_service()
+        service.graph_search("langgraph")
+        query = service._driver.session_obj.query
+        assert query is not None
+        assert "LIMIT $limit" in query
+        assert not any(char.isdigit() for char in query.split("LIMIT")[1])
 
     def test_rejects_cypher_injection_without_running_query(self) -> None:
         service = _neo4j_service()

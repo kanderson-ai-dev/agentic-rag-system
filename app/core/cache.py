@@ -9,12 +9,9 @@ bounded staleness window. Writes/mutations are never cached.
 import threading
 import time
 from collections.abc import Callable
-from typing import Generic, TypeVar
-
-T = TypeVar("T")
 
 
-class TTLCache(Generic[T]):
+class TTLCache[T]:
     """A tiny in-memory cache with per-entry expiry and a bounded size."""
 
     def __init__(self, ttl_seconds: float = 300.0, max_size: int = 256) -> None:

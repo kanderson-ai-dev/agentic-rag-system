@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.config import Settings, get_settings
 from app.core.dependencies import get_session_id
+from app.services.promotion_gate import EDD_THRESHOLDS
 from app.services.usage_store import UsageStore
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
@@ -43,7 +44,9 @@ def summary(
 
 @router.get("/recent")
 def recent(
-    request: Request, limit: int = 20, session_id: str | None = Depends(get_session_id)
+    request: Request,
+    limit: int = Query(20, ge=1, le=500),
+    session_id: str | None = Depends(get_session_id),
 ) -> list[dict[str, Any]]:
     """Return the most recent requests' usage metadata, scoped like `/summary`."""
     return _get_usage_store(request).recent(limit=limit, session_id=session_id)
@@ -112,12 +115,16 @@ def performance(
     return perf
 
 
-# Success thresholds from the project's "Objetivo del proyecto" (PLAN.md / README.md).
+# The dashboard only surfaces the four RAGAS metrics — `llm_as_judge` in
+# EDD_THRESHOLDS is an evaluation gate, not a retrieval-quality score.
 _QUALITY_THRESHOLDS = {
-    "faithfulness": 0.85,
-    "answer_relevancy": 0.85,
-    "context_precision": 0.75,
-    "context_recall": 0.75,
+    name: EDD_THRESHOLDS[name]
+    for name in (
+        "faithfulness",
+        "answer_relevancy",
+        "context_precision",
+        "context_recall",
+    )
 }
 
 

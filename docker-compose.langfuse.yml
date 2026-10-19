@@ -1,4 +1,6 @@
 # Optional self-hosted Langfuse stack — NOT part of the default compose.
+# DEV-ONLY credentials: every secret below is a throwaway local value, never
+# reuse them on a real deployment, and published ports bind to loopback only.
 #
 # Why: cloud Langfuse plans have usage limits; self-hosting removes the trace
 # quota entirely. Based on the official Langfuse self-host compose
@@ -35,7 +37,7 @@ services:
       minio:
         condition: service_healthy
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/langfuse
       CLICKHOUSE_URL: http://clickhouse:8123
@@ -159,7 +161,9 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
+    # minio/minio was removed from Docker Hub (community edition went
+    # source-only); the dated release tag still pulls from Quay.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
@@ -167,8 +171,8 @@ services:
     entrypoint: >
       sh -c "mkdir -p /data/langfuse-events /data/langfuse-media && minio server /data --console-address ':9001'"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - langfuse-minio:/data
     healthcheck:

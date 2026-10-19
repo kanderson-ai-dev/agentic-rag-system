@@ -17,8 +17,8 @@ from app.core.config import Settings
 from app.graph.prompts import RegistryPrompt
 from app.services.prompt_registry import PromptName
 
-# Hard cap on generated answer length. The prompt already asks for at most
-# three sentences (~150 tokens); the bound only protects tail latency.
+# Hard cap on generated answer length. The prompt asks for concise but
+# complete answers; the bound only protects tail latency.
 GENERATION_MAX_TOKENS = 512
 
 

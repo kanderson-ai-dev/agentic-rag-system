@@ -1,8 +1,9 @@
+# Dev compose — published ports are bound to loopback only.
 services:
   agentic-rag-system:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     volumes:
@@ -12,10 +13,12 @@ services:
   neo4j:
     image: neo4j:5-community
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/password
+      # No default password: the graph profile refuses to start until a real
+      # NEO4J_PASSWORD is set in .env.
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
     volumes:
       - neo4j-data:/data
     profiles:

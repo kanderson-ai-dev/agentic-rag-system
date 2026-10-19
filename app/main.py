@@ -1,5 +1,6 @@
 """FastAPI application entrypoint."""
 
+import contextlib
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -21,6 +22,7 @@ from app.core.cost_tracking import TokenUsageCallbackHandler
 from app.core.logging import configure_logging, get_logger
 from app.core.rate_limit import limiter
 from app.graph.graph import build_default_graph
+from app.services.graph_store import build_graph_store_service
 from app.services.usage_store import UsageStore
 
 logger = get_logger(__name__)
@@ -41,13 +43,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     owned_store = app.state.usage_store
     app.state.token_handler = TokenUsageCallbackHandler()
 
+    # The graph store is owned by the lifespan (not by build_default_graph) so
+    # the Neo4j driver — when configured — can be closed at shutdown.
+    app.state.graph_store = None
     with SqliteSaver.from_conn_string(str(checkpoint_path)) as checkpointer:
         try:
+            app.state.graph_store = build_graph_store_service(settings)
             app.state.graph = build_default_graph(
                 settings,
                 checkpointer,
                 app.state.token_handler,
                 app.state.usage_store,
+                graph_store_service=app.state.graph_store,
             )
             logger.info("Self-RAG graph initialized successfully")
         except Exception as exc:  # noqa: BLE001 - degrade gracefully, don't crash startup
@@ -65,6 +72,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             store.close()
         if store is not None:
             del app.state.usage_store
+        graph_store = getattr(app.state, "graph_store", None)
+        if graph_store is not None:
+            with contextlib.suppress(Exception):
+                graph_store.close()
+            del app.state.graph_store
     logger.info("Application shutdown complete")
 
 

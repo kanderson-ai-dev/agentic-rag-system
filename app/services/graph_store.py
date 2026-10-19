@@ -122,6 +122,9 @@ class GraphStoreService(Protocol):
 
     def graph_search(self, term: str) -> list[Document]: ...
 
+    def close(self) -> None:
+        """Release backend resources (no-op for in-memory backends)."""
+
 
 class NetworkXGraphStoreService:
     """Local in-memory graph store (default backend, no external account)."""
@@ -191,6 +194,9 @@ class NetworkXGraphStoreService:
                 break
         return results
 
+    def close(self) -> None:
+        """No-op — the in-memory graph holds no external resources."""
+
 
 class Neo4jGraphStoreService:
     """Neo4j-backed graph store (cloud, used when configured)."""
@@ -229,10 +235,10 @@ class Neo4jGraphStoreService:
             "WHERE any(term IN $terms WHERE "
             "toLower(coalesce(n.label, '')) CONTAINS term "
             "OR toLower(coalesce(n.description, '')) CONTAINS term) "
-            f"RETURN n.label AS label, n.description AS description LIMIT {_MAX_GRAPH_RESULTS}"
+            "RETURN n.label AS label, n.description AS description LIMIT $limit"
         )
         with self._driver.session() as session:
-            records = list(session.run(query, terms=terms))
+            records = list(session.run(query, terms=terms, limit=_MAX_GRAPH_RESULTS))
         return [
             Document(
                 page_content=record.get("description") or record.get("label") or "",
