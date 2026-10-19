@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.config import get_settings
 from app.graph.prompts import REFUSAL_TEXT
@@ -25,6 +25,9 @@ class QueryRequest(BaseModel):
     )
     thread_id: str | None = Field(
         default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9_.:-]+$",
         description="Existing conversation/thread id. A new one is generated if omitted.",
     )
 
@@ -92,11 +95,23 @@ class HumanReviewRequest(BaseModel):
 
     decision: Literal["approve", "retry", "override"]
     revised_question: str | None = Field(
-        default=None, description="Required when decision is 'retry'."
+        default=None,
+        max_length=get_settings().max_question_chars,
+        description="Required when decision is 'retry'.",
     )
     override_answer: str | None = Field(
-        default=None, description="Required when decision is 'override'."
+        default=None,
+        max_length=4000,
+        description="Required when decision is 'override'.",
     )
+
+    @model_validator(mode="after")
+    def _require_payload_for_decision(self) -> "HumanReviewRequest":
+        if self.decision == "retry" and not (self.revised_question or "").strip():
+            raise ValueError("revised_question is required for 'retry'")
+        if self.decision == "override" and not (self.override_answer or "").strip():
+            raise ValueError("override_answer is required for 'override'")
+        return self
 
 
 class LoginRequest(BaseModel):

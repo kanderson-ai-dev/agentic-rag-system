@@ -551,6 +551,8 @@ curl -s -X POST http://localhost:8000/api/v1/rag/query \
 curl -s -X POST http://localhost:8000/api/v1/rag/query/<thread_id>/review \
   -H "Content-Type: application/json" \
   -d '{"decision":"override","override_answer":"..."}'
+# Note: a client-chosen thread_id is a capability — anyone holding it can
+# resume that thread. Use random, unguessable ids ([A-Za-z0-9_.:-], <= 128).
 
 # Out-of-domain query (demonstrates anti-hallucination)
 curl -s -X POST http://localhost:8000/api/v1/rag/query \

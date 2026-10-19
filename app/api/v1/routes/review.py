@@ -4,18 +4,25 @@ Resumes a graph execution that was paused by `human_review_node` when the
 Self-RAG correction loop exhausted its retries.
 """
 
-from typing import Any
+import time
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from app.api.v1.schemas import HumanReviewRequest, QueryResponse
+from app.api.v1.usage import record_request_usage, reset_token_handler
 from app.core import tracing
 from app.core.config import get_settings
-from app.core.dependencies import enforce_daily_budget, get_graph, verify_jwt
-from app.core.metrics import agent_output_flagged_total
+from app.core.dependencies import (
+    enforce_daily_budget,
+    get_graph,
+    get_session_id,
+    verify_jwt,
+)
 from app.core.rate_limit import limiter, request_rate_limit
+from app.graph.guardrails import detect_prompt_injection, sanitize_input
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 
@@ -23,14 +30,26 @@ router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 @router.post("/query/{thread_id}/review", response_model=QueryResponse)
 @limiter.limit(request_rate_limit)
 def review(
-    thread_id: str,
+    thread_id: Annotated[
+        str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
+    ],
     payload: HumanReviewRequest,
     request: Request,
     response: Response,
     graph: CompiledStateGraph[Any, None, Any, Any] = Depends(get_graph),
     _: dict[str, Any] | None = Depends(verify_jwt),
+    session_id: str | None = Depends(get_session_id),
 ) -> QueryResponse:
     """Resume an interrupted graph run with a human's decision."""
+    # The `retry` decision re-enters the graph past the input guardrail, so
+    # the revised question is screened here instead — before any graph call.
+    resume = payload.model_dump()
+    if payload.decision == "retry":
+        revised = sanitize_input(payload.revised_question or "")
+        if not revised or detect_prompt_injection(revised) is not None:
+            raise HTTPException(status_code=422, detail="Revised question rejected.")
+        resume["revised_question"] = revised
+
     config = {"configurable": {"thread_id": thread_id}}
     snapshot = graph.get_state(config)
     if not snapshot.next:
@@ -45,6 +64,8 @@ def review(
     enforce_daily_budget(request)
 
     settings = get_settings()
+    start = time.perf_counter()
+    reset_token_handler(request)
     with tracing.trace_run(
         settings,
         name="rag.review",
@@ -52,7 +73,7 @@ def review(
         tags=["api", "hitl"],
     ) as trace_id:
         result = graph.invoke(
-            Command(resume=payload.model_dump()),
+            Command(resume=resume),
             config={
                 "configurable": {"thread_id": thread_id},
                 "callbacks": tracing.build_callbacks(settings),
@@ -60,6 +81,12 @@ def review(
         )
     if trace_id:
         response.headers["X-Trace-Id"] = trace_id
-    if result.get("output_flagged"):
-        agent_output_flagged_total.inc()
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    record_request_usage(
+        request,
+        thread_id=thread_id,
+        result=result,
+        latency_ms=latency_ms,
+        session_id=session_id,
+    )
     return QueryResponse.from_graph_result(result, thread_id)

@@ -85,6 +85,8 @@ def sanitize_input(raw_text: str) -> str:
 
 def detect_prompt_injection(text: str) -> str | None:
     """Return the category of the first injection pattern matched, else `None`."""
+    if not isinstance(text, str) or not text:
+        return None
     for category, pattern in INJECTION_PATTERNS:
         if pattern.search(text):
             return category
@@ -113,6 +115,8 @@ def screen_output(text: str, protected_texts: Iterable[str] | None = None) -> st
     a promotion can never leave a stale snapshot that a new prompt would leak
     past.
     """
+    if not isinstance(text, str) or not text:
+        return None
     reflected = detect_prompt_injection(text)
     if reflected:
         return f"reflected_injection:{reflected}"

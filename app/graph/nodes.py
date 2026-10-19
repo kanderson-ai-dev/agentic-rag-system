@@ -356,7 +356,7 @@ def make_human_review_node() -> NodeFn:
         updates: dict[str, Any] = {"human_decision": decision}
 
         if decision == "override":
-            updates["generation"] = decision_payload.get("override_answer", "")
+            updates["generation"] = decision_payload.get("override_answer") or ""
         elif decision == "retry":
             updates["question"] = decision_payload.get("revised_question") or state["question"]
             updates["retry_count"] = 0

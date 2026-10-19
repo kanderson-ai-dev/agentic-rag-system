@@ -64,6 +64,10 @@ class TestDetectPromptInjection:
     def test_benign_text_is_not_flagged(self) -> None:
         assert detect_prompt_injection("what is langgraph?") is None
 
+    def test_tolerates_non_string_input(self) -> None:
+        assert detect_prompt_injection(None) is None  # type: ignore[arg-type]
+        assert detect_prompt_injection("") is None
+
 
 class TestScreenOutput:
     def test_flags_reflected_injection(self) -> None:
@@ -84,6 +88,10 @@ class TestScreenOutput:
 
     def test_benign_output_is_not_flagged(self) -> None:
         assert screen_output("LangGraph orchestrates stateful multi-actor applications.") is None
+
+    def test_tolerates_non_string_output(self) -> None:
+        assert screen_output(None) is None  # type: ignore[arg-type]
+        assert screen_output("") is None
 
 
 class TestGuardrailNode:
