@@ -151,9 +151,10 @@ all committed:
 | [`f0918333d964`](evaluation/results/ab/f0918333d964.json) (console job) | 4.952 → 4.905 | +19 440 ms | $0.024 | **blocked** |
 | [`f0ef98a18f98`](evaluation/results/ab/f0ef98a18f98.json) (console job) | 4.952 → 4.905 | −8 030 ms | $0.024 | **blocked** |
 | [`b704310f28cb`](evaluation/results/ab/b704310f28cb.json) (console job) | 5.000 → 4.976 | −14 834 ms | $0.024 | **blocked** |
+| [`1ef09bac29aa`](evaluation/results/ab/1ef09bac29aa.json) (console job — in the GIF) | 4.952 → 4.976 | −2 351 ms | $0.024 | **allowed** |
 | [`737bddf9fa85`](evaluation/results/ab/737bddf9fa85.json) (engine CLI) | 4.905 → 4.976 | −2 561 ms | $0.024 (76 444 + 7 716 tok) | **allowed** |
 
-1 of 4 gates passed — the judge deltas sit inside run noise, so v2 stays
+2 of 5 gates passed — the judge deltas sit inside run noise, so v2 stays
 promoted and v3 stays a candidate. That split is published as measured
 (see
 [`evaluation/results/iterations/iteration-2.md`](evaluation/results/iterations/iteration-2.md)),

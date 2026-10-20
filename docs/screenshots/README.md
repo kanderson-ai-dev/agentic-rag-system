@@ -11,7 +11,7 @@ Chromium (Playwright) — so the images always reflect the real UI, not mocks.
 | `dashboard-latency.png` | The console's cost/latency SVG chart + recent-requests table, populated by real queries | `capture_screenshots.py` |
 | `ragas-scorecard.png` | The versioned `evaluation/results/ragas_scorecard.json` rendered as a terminal-style capture | `capture_screenshots.py` |
 | `rag-demo.gif` | Hero clip — landing answer → console Prompts tab → diff → candidate → A/B verdict → promote | `scripts/record_demo.py` (deterministic stub + `imageio-ffmpeg`) |
-| `rag-demo-live.gif` | Same flow on the **real** app — real model calls, real gated A/B verdict (blocked on that run) | `scripts/record_demo.py --live` (2026-10-19, `gpt-4o-mini`, Pinecone + NetworkX) |
+| `rag-demo-live.gif` | Full feature tour on the **real** app — landing answer, guardrail block, console chat, HITL modal, dashboard, performance, prompt registry (diff → candidate → A/B verdict → promote). Waiting spans are time-compressed, everything else runs 1× | `scripts/record_showcase.py` (2026-10-20, `gpt-4o-mini`, Pinecone + NetworkX; A/B `1ef09bac29aa`) |
 | `langsmith-experiment-1.png` | The LangSmith experiment run list with the five evaluators per row | **Manual** — see below |
 | `langsmith-experiment-2.png` | The `llm_as_judge` score with the evaluator's reasoning | **Manual** — see below |
 | `langsmith-experiment-3.png` | A single evaluator trace (`gpt-4o-mini`, token usage, metadata) | **Manual** — see below |
@@ -28,8 +28,11 @@ the UI, not a measurement. `docs/ui-qa/live/` holds captures from
 `scripts/ui_qa.py --live`, a run of the real app with real model calls
 (2026-10-19, `gpt-4o-mini`, Pinecone + NetworkX); its
 `console-prompts-ab-live.png` shows the real gated A/B verdict persisted as
-`evaluation/results/ab/f0918333d964.json`. `scripts/record_demo.py --live`
-does the same for the GIF.
+`evaluation/results/ab/f0918333d964.json`. The hero GIF comes from
+`scripts/record_showcase.py` — a live full-feature tour where only the
+waiting spans (LLM latency, the A/B job) are time-compressed in
+post-production; `scripts/record_demo.py --live` records the shorter
+fixed script the same way.
 
 ## Regenerating the automated captures
 

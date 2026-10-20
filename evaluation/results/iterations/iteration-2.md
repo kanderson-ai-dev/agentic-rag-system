@@ -35,9 +35,9 @@ no-op candidate.
 Registry writes for every run lived in a temp copy of `prompts/` — the
 tracked tree was never mutated (v3 remains a candidate, not promoted).
 
-## Outcome — four live runs, verdict split
+## Outcome — five live runs, verdict split
 
-Same candidate, same engine, four real runs — the spread between them is
+Same candidate, same engine, five real runs — the spread between them is
 judge/latency variance, not a code change:
 
 | run | path | judge v2 → v3 | p50 | p95 | spend (both arms) | gate |
@@ -45,18 +45,20 @@ judge/latency variance, not a code change:
 | `f0918333d964` | console job `776daf547254` | 4.952 → 4.905 | 4 168 → 2 718 | 10 321 → 29 761 | $0.0077 + $0.0162 | **BLOCKED** (judge −0.047, p95 +188%) |
 | `f0ef98a18f98` | console job `547e02986317` | 4.952 → 4.905 | 3 510 → 2 640 | 19 624 → 11 594 | $0.0076 + $0.0161 | **BLOCKED** (judge −0.047) |
 | `b704310f28cb` | console job `1fef299d6e13` | 5.000 → 4.976 | 5 633 → 2 818 | 19 350 → 4 516 | $0.0076 + $0.0160 | **BLOCKED** (judge −0.024) |
+| `1ef09bac29aa` | console job `6eaebd37a1be` | 4.952 → 4.976 | 3 446 → 2 864 | 7 878 → 5 527 | $0.0076 + $0.0161 | **ALLOWED** (+0.024) |
 | `737bddf9fa85` | engine CLI | 4.905 → 4.976 | 3 558 → 2 882 | 6 919 → 4 358 | $0.0076 + $0.0161 | **ALLOWED** (+0.071) |
 
 All results carry `meta.live: true`, `meta.model: gpt-4o-mini`,
 `meta.git_sha: 7475264`, 18 cases per arm, nonzero `cost_total_usd` on
-both arms; the three later runs also stamp `meta.tokens` (~76k prompt +
+both arms; the later runs also stamp `meta.tokens` (~76k prompt +
 ~7.7k completion ≈ $0.024 per run). Every file — blocked or allowed —
 is committed under `evaluation/results/ab/`; a blocked gate is valid
-evidence, published rather than re-tuned.
+evidence, published rather than re-tuned. The `1ef09bac29aa` run is the
+one shown live in `docs/screenshots/rag-demo-live.gif`.
 
-Reading: 1 of 4 runs allowed. The judge deltas (−0.047 … +0.071) sit
+Reading: 2 of 5 runs allowed. The judge deltas (−0.047 … +0.071) sit
 inside typical 1–5 judge noise and the p95 swings trace to single
-outlier cases — at n=18 the evidence is inconclusive *against* v3, so
-v2 stays promoted and v3 stays a candidate. The honest next step is a
-larger dataset or repeated-run promotion policy, not a candidate tweak
+outlier cases — at n=18 the evidence is inconclusive, so v2 stays
+promoted and v3 stays a candidate. The honest next step is a larger
+dataset or a repeated-run promotion policy, not a candidate tweak
 after a blocked verdict.
