@@ -3,6 +3,9 @@
 Self-assessment pass over the rendered UI. Captures are generated deterministically
 by `scripts/ui_qa.py` (stub graph, same technique as the functional suite) into
 `docs/ui-qa/`; a machine-readable index lives in `docs/ui-qa/manifest.json`.
+The `docs/ui-qa/live/` set was captured by `scripts/ui_qa.py --live` — the real
+app on real model calls (2026-10-19) — including `console-prompts-ab-live.png`,
+the genuine gated A/B verdict for `evaluation/results/ab/f0918333d964.json`.
 
 Automated rules are enforced by `tests/e2e/test_ui_content.py` (run with
 `pytest -m e2e`, deterministic — no keys). Manual inspection was performed on the

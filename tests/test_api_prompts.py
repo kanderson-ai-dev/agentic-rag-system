@@ -61,6 +61,9 @@ def registry(tmp_path: Path) -> PromptRegistry:
 
 def _settings(**overrides: Any) -> Settings:
     base: dict[str, Any] = {
+        # Explicit None: a local .env may provide a real key, which would
+        # activate the live-evidence promotion guard inside stub tests.
+        "openai_api_key": None,
         "jwt_secret_key": "test-secret-key-for-local-tests-only",
         "jwt_algorithm": "HS256",
         "jwt_expire_minutes": 30,
@@ -370,6 +373,78 @@ class TestAbTestEndpoints:
         assert (
             evaluation.scorecard["faithfulness"] == _GOOD_SCORECARD["faithfulness"]
         )
+
+    def test_promote_rejects_fixture_evidence_when_keyed(
+        self, registry: PromptRegistry, tmp_path: Path
+    ) -> None:
+        """A stub/canned result can never promote in a keyed deployment —
+        `meta.live` is only stamped when the A/B engine drove the real graph.
+        """
+        settings = _settings(
+            jwt_secret_key=None,
+            prompt_registry_write_enabled=True,
+            openai_api_key="sk-test-deployment-key",
+        )
+        runner = lambda name, version: {  # noqa: E731 - stub: no meta.live
+            "candidate_scorecard": _GOOD_SCORECARD,
+            "meta": {"dataset_version": "abc123"},
+        }
+        candidate = registry.create_candidate(
+            "generate_answer", **_candidate_body()
+        ).version
+        with _client(settings, tmp_path=tmp_path, runner=runner) as client:
+            job_id = client.post(
+                "/api/v1/prompts/generate_answer/ab-test",
+                json={"candidate_version": candidate},
+            ).json()["job_id"]
+            assert _wait_for_job(client, job_id)["status"] == "succeeded"
+
+            promoted = client.post(
+                "/api/v1/prompts/generate_answer/promote",
+                json={
+                    "version": candidate,
+                    "evaluation": {"ab_test_id": job_id},
+                },
+            )
+
+        assert promoted.status_code == 409
+        assert promoted.json()["detail"]["failures"] == [
+            "evaluation: not a live run"
+        ]
+
+    def test_promote_accepts_live_stamped_evidence_when_keyed(
+        self, registry: PromptRegistry, tmp_path: Path
+    ) -> None:
+        """The guard checks provenance, not the job mechanism — a result
+        stamped `meta.live` still promotes under the same keyed settings."""
+        settings = _settings(
+            jwt_secret_key=None,
+            prompt_registry_write_enabled=True,
+            openai_api_key="sk-test-deployment-key",
+        )
+        runner = lambda name, version: {  # noqa: E731
+            "candidate_scorecard": _GOOD_SCORECARD,
+            "meta": {"dataset_version": "abc123", "live": True},
+        }
+        candidate = registry.create_candidate(
+            "generate_answer", **_candidate_body()
+        ).version
+        with _client(settings, tmp_path=tmp_path, runner=runner) as client:
+            job_id = client.post(
+                "/api/v1/prompts/generate_answer/ab-test",
+                json={"candidate_version": candidate},
+            ).json()["job_id"]
+            assert _wait_for_job(client, job_id)["status"] == "succeeded"
+
+            promoted = client.post(
+                "/api/v1/prompts/generate_answer/promote",
+                json={
+                    "version": candidate,
+                    "evaluation": {"ab_test_id": job_id},
+                },
+            )
+
+        assert promoted.status_code == 200
 
 
 class TestPromoteRollback:

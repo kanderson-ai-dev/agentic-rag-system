@@ -21,7 +21,7 @@ from app.api.v1.schemas import (
     PromoteRequest,
     PromptNameParam,
 )
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.dependencies import (
     get_ab_test_manager,
     get_ab_test_runner,
@@ -222,6 +222,7 @@ def promote(
     actor: str = Depends(require_prompt_write),
     registry: PromptRegistry = Depends(get_prompt_registry),
     manager: AbTestJobManager = Depends(get_ab_test_manager),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """Promote a candidate — gated on EDD thresholds and non-regression.
 
@@ -238,21 +239,32 @@ def promote(
         promoted = registry.promoted(name)
 
     evidence = payload.evaluation or candidate.evaluation
-    # An `ab_test_id` with no inline scorecard resolves against the job
-    # manager — the typical API flow: run A/B, poll, promote by id.
-    if (
-        evidence is not None
-        and not getattr(evidence, "scorecard", None)
-        and getattr(evidence, "ab_test_id", None)
-    ):
-        job = manager.get(str(evidence.ab_test_id))
+    # An `ab_test_id` resolves against the job manager — the typical API
+    # flow: run A/B, poll, promote by id. `meta.live` on the persisted
+    # result is what proves the scorecard came from real model calls.
+    live_evidence = False
+    ab_test_id = getattr(evidence, "ab_test_id", None) if evidence else None
+    if ab_test_id:
+        job = manager.get(str(ab_test_id))
         if job is not None and job.get("status") == "succeeded":
             result = job.get("result") or {}
-            evidence = PromptEvaluation(
-                dataset_version=(result.get("meta") or {}).get("dataset_version"),
-                scorecard=result.get("candidate_scorecard") or {},
-                ab_test_id=str(evidence.ab_test_id),
-            )
+            live_evidence = bool((result.get("meta") or {}).get("live"))
+            if not getattr(evidence, "scorecard", None):
+                evidence = PromptEvaluation(
+                    dataset_version=(result.get("meta") or {}).get("dataset_version"),
+                    scorecard=result.get("candidate_scorecard") or {},
+                    ab_test_id=str(ab_test_id),
+                )
+    # In a deployment with an OpenAI key configured, a fixture/stub run can
+    # never promote a prompt — only evidence from a real-model A/B counts.
+    if settings.openai_api_key and not live_evidence:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Promotion requires live A/B evidence",
+                "failures": ["evaluation: not a live run"],
+            },
+        )
     if evidence is None or not getattr(evidence, "scorecard", None):
         raise HTTPException(
             status_code=409,

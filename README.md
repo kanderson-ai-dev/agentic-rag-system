@@ -139,6 +139,27 @@ after the baseline showed a multi-part case dropping a concept. The gate also
 flagged — and got fixed for — an inverted sign on latency regression: faster
 is not a regression.
 
+A second iteration ran **live** on 2026-10-19 — real model calls, real
+backends (Pinecone + NetworkX; Neo4j Aura was unreachable and the runs are
+labelled accordingly), four real A/B executions of the same v3 candidate,
+all committed:
+
+| run | judge v2 → v3 | p95 | spend | gate |
+|---|---|---|---|---|
+| [`f0918333d964`](evaluation/results/ab/f0918333d964.json) (console job) | 4.952 → 4.905 | +19 440 ms | $0.024 | **blocked** |
+| [`f0ef98a18f98`](evaluation/results/ab/f0ef98a18f98.json) (console job) | 4.952 → 4.905 | −8 030 ms | $0.024 | **blocked** |
+| [`b704310f28cb`](evaluation/results/ab/b704310f28cb.json) (console job) | 5.000 → 4.976 | −14 834 ms | $0.024 | **blocked** |
+| [`737bddf9fa85`](evaluation/results/ab/737bddf9fa85.json) (engine CLI) | 4.905 → 4.976 | −2 561 ms | $0.024 (76 444 + 7 716 tok) | **allowed** |
+
+1 of 4 gates passed — the judge deltas sit inside run noise, so v2 stays
+promoted and v3 stays a candidate. That split is published as measured
+(see
+[`evaluation/results/iterations/iteration-2.md`](evaluation/results/iterations/iteration-2.md)),
+not re-tuned. Results from the real engine carry `meta.live: true` — in a
+deployment with an OpenAI key configured, `POST …/promote` **rejects**
+evidence that is not live-stamped, so a fixture scorecard can never ship a
+prompt.
+
 ### Experiment evidence
 
 Experiment `ga2-gd1-lj1-tq1-f964ae3-2026-10-12` on **Langfuse**

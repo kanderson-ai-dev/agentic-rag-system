@@ -9,7 +9,10 @@ each scenario asserts the *flow* works and records what actually happened.
 
 import contextlib
 import json
+import os
+import shutil
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -146,3 +149,114 @@ def test_live_suite(live_server: str, browser) -> None:
         encoding="utf-8",
     )
     context.close()
+
+
+def _post(url: str, payload: dict) -> tuple[int, dict]:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read() or b"{}")
+
+
+def test_live_ab_test_real_engine(live_server: str, tmp_path: Path) -> None:
+    """A real prompt A/B through the API — no ``dependency_overrides``.
+
+    Regression guard for the promotion evidence contract: the run must go
+    through the real ``evaluation/ab_test.py`` engine with real model calls,
+    and the persisted result must carry the live-evidence shape the promote
+    gate requires (``meta.live``, nonzero spend on both arms, the full
+    18-case dataset, configured model in ``meta.model``). Gated on
+    ``E2E_LIVE=1`` plus a resolved OpenAI key — the .env-aware analogue of
+    ``tests.conftest.requires_openai_key`` (that marker reads ``os.environ``
+    only and cannot see keys loaded through pydantic's ``env_file``).
+    """
+    import sys
+
+    sys.path.insert(0, str(Path("scripts").resolve()))
+    import ui_qa
+
+    from app.core.config import get_settings
+    from app.graph import prompts as prompts_module
+    from app.services.prompt_registry import PromptRegistry
+
+    get_settings.cache_clear()
+    if get_settings().openai_api_key is None:
+        pytest.skip("requires OPENAI_API_KEY (.env or environment)")
+
+    # Hardened live caps + registry writes — restored on exit.
+    saved_env = {
+        k: os.environ.get(k)
+        for k in (
+            "AB_TEST_MAX_COST_USD",
+            "AB_TEST_TIMEOUT_SECONDS",
+            "PROMPT_REGISTRY_WRITE_ENABLED",
+        )
+    }
+    os.environ["AB_TEST_MAX_COST_USD"] = "0.50"
+    os.environ["AB_TEST_TIMEOUT_SECONDS"] = "600"
+    os.environ["PROMPT_REGISTRY_WRITE_ENABLED"] = "true"
+    get_settings.cache_clear()
+
+    tmp_prompts = tmp_path / "prompts"
+    shutil.copytree(Path("prompts"), tmp_prompts)
+    original_registry = prompts_module.get_registry()
+    prompts_module.set_registry(PromptRegistry(tmp_prompts))
+    try:
+        settings = get_settings()
+        assert settings.ab_test_max_cost_usd == 0.50
+        assert settings.ab_test_timeout_seconds == 600
+
+        # Create the candidate through the real write path.
+        status, body = _post(
+            f"{live_server}/api/v1/prompts/generate_answer/candidates",
+            ui_qa.LIVE_CANDIDATE,
+        )
+        assert status == 201, body
+        candidate_version = body["version"]
+
+        # Launch the A/B — the default runner is the real engine.
+        status, body = _post(
+            f"{live_server}/api/v1/prompts/generate_answer/ab-test",
+            {"candidate_version": candidate_version},
+        )
+        assert status == 202, body
+        job_id = body["job_id"]
+
+        deadline = time.monotonic() + 900
+        job: dict = {}
+        while time.monotonic() < deadline:
+            with urllib.request.urlopen(
+                f"{live_server}/api/v1/prompts/generate_answer/ab-test/{job_id}",
+                timeout=30,
+            ) as resp:
+                job = json.loads(resp.read())
+            if job.get("status") not in {"queued", "running"}:
+                break
+            time.sleep(5)
+        assert job.get("status") == "succeeded", job.get("error")
+
+        result = job["result"]
+        meta = result["meta"]
+        assert meta["live"] is True
+        assert meta["model"] == settings.chat_model_name
+        for arm in ("baseline", "candidate"):
+            detail = result[f"{arm}_detail"]
+            assert len(detail["cases"]) == 18
+            assert detail["cost_total_usd"] > 0
+            answers = [c.get("answer") or "" for c in detail["cases"]]
+            assert any(a.strip() for a in answers), f"{arm} produced no answers"
+    finally:
+        prompts_module.set_registry(original_registry)
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        get_settings.cache_clear()

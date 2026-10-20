@@ -30,7 +30,7 @@ pw = pytest.importorskip(
 )
 sync_playwright = pw.sync_playwright
 
-from app.core.config import get_settings  # noqa: E402
+from app.core.config import Settings, get_settings  # noqa: E402
 from app.core.dependencies import get_graph  # noqa: E402
 from app.main import app  # noqa: E402
 from tests.conftest import (  # noqa: E402
@@ -120,6 +120,13 @@ def stub_server() -> Iterator[str]:
     saved = {k: os.environ.pop(k, None) for k in _KEY_VARS}
     os.environ["TRACING_PROVIDER"] = "none"
     get_settings.cache_clear()
+    # Env popping alone is not hermetic — a local `.env` still feeds
+    # pydantic's env_file, so a developer machine would run this suite as a
+    # *keyed* deployment (the live-evidence promote guard would then rightly
+    # reject canned A/B results). Override `get_settings` with a per-call
+    # env-only construction: `.env` never leaks in, and per-test env toggles
+    # (e.g. PROMPT_REGISTRY_WRITE_ENABLED) still apply.
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
     retriever = TopicRetriever()
     # The budget gate consults this callable per request — the dedicated test
     # flips E2E_BUDGET_EXHAUSTED mid-session to exercise the 429 path.
@@ -134,6 +141,7 @@ def stub_server() -> Iterator[str]:
             yield server.base_url
     finally:
         app.dependency_overrides.pop(get_graph, None)
+        app.dependency_overrides.pop(get_settings, None)
         for key, value in saved.items():
             if value is not None:
                 os.environ[key] = value
@@ -146,16 +154,21 @@ def live_server() -> Iterator[str]:
     if not LIVE:
         pytest.skip("set E2E_LIVE=1 to run the live functional QA suite")
     get_settings.cache_clear()
-    # stub_server is session-scoped and keeps its graph override alive for the
-    # whole session — the live suite must serve the real graph even when stub
-    # tests ran first in the same invocation.
-    leaked = app.dependency_overrides.pop(get_graph, None)
+    # stub_server is session-scoped and keeps its graph/settings overrides
+    # alive for the whole session — the live suite must serve the real graph
+    # and the real (keyed) settings even when stub tests ran first.
+    leaked_graph = app.dependency_overrides.pop(get_graph, None)
+    leaked_settings = app.dependency_overrides.pop(get_settings, None)
+    get_settings.cache_clear()
     try:
         with _Server(_free_port()) as server:
             yield server.base_url
     finally:
-        if leaked is not None:
-            app.dependency_overrides[get_graph] = leaked
+        if leaked_graph is not None:
+            app.dependency_overrides[get_graph] = leaked_graph
+        if leaked_settings is not None:
+            app.dependency_overrides[get_settings] = leaked_settings
+        get_settings.cache_clear()
 
 
 @pytest.fixture(scope="session")

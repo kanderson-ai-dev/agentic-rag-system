@@ -1,0 +1,66 @@
+[
+  {
+    "file": "landing-empty-1280-dark.png",
+    "bytes": 29264
+  },
+  {
+    "file": "landing-empty-768-dark.png",
+    "bytes": 27314
+  },
+  {
+    "file": "landing-empty-375-dark.png",
+    "bytes": 23427
+  },
+  {
+    "file": "landing-answer.png",
+    "bytes": 41290
+  },
+  {
+    "file": "landing-escalated.png",
+    "bytes": 37696
+  },
+  {
+    "file": "landing-blocked.png",
+    "bytes": 33092
+  },
+  {
+    "file": "console-hitl-modal.png",
+    "bytes": 120742
+  },
+  {
+    "file": "console-chat.png",
+    "bytes": 26717
+  },
+  {
+    "file": "console-dashboard.png",
+    "bytes": 69669
+  },
+  {
+    "file": "console-performance.png",
+    "bytes": 128435
+  },
+  {
+    "file": "console-prompts-list.png",
+    "bytes": 23059
+  },
+  {
+    "file": "console-prompts-diff.png",
+    "bytes": 29291
+  },
+  {
+    "file": "console-prompts-ab-live.png",
+    "bytes": 21054
+  },
+  {
+    "file": "console-mobile-375.png",
+    "bytes": 166935
+  },
+  {
+    "file": "console-tablet-768.png",
+    "bytes": 165440
+  },
+  {
+    "file": "console-dashboard-1280-light.png",
+    "bytes": 166949
+  }
+]

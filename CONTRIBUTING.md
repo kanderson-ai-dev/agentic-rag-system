@@ -43,6 +43,23 @@ promoted file in place:
 
 Mutations need a JWT (when auth is configured) or `PROMPT_REGISTRY_WRITE_ENABLED=true`.
 Every step is also visible — and clickable — in the console's **Prompts** tab.
+
+### Live evidence required for promotion
+
+The A/B that feeds `promote` must be a **real** engine run — equivalent to:
+
+```bash
+python -m evaluation.ab_test --name generate_answer --candidate N --max-cost-usd 0.50
+```
+
+(i.e. `evaluation/ab_test.py` on the shared dataset with real model calls;
+results carry `meta.live: true`). In a deployment with an OpenAI key
+configured, `POST …/promote` rejects evidence that is not live-stamped —
+stub/fixture runs (the `CANNED_AB` payload used by `scripts/ui_qa.py`, a
+`dependency_overrides` runner, or any replayed scorecard) never count as
+promotion evidence. Spend is bounded by `AB_TEST_MAX_COST_USD` /
+`AB_TEST_TIMEOUT_SECONDS`; a blocked gate is a valid outcome — publish it,
+don't tune the candidate after the fact.
 - Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`).
 - Never commit secrets. `.env`, `data/*.sqlite`, and internal planning docs are
   gitignored.

@@ -116,6 +116,10 @@ def run_ab_test(
         scorers = evaluators.default_scorers()
     token_handler = TokenUsageCallbackHandler()
     evaluators.set_token_handler(token_handler)
+    # `live` marks evidence produced by real model calls: true only when the
+    # engine built the production graph itself with a configured key. An
+    # injected graph (tests, fixtures) means the calls never happened here.
+    live = graph is None and settings.openai_api_key is not None
     if graph is None:
         graph = build_default_graph(settings, InMemorySaver(), token_handler)
 
@@ -171,7 +175,14 @@ def run_ab_test(
         "candidate_detail": candidate_card,
         "deltas": deltas,
         "gate": {"allowed": gate.allowed, "failures": gate.failures},
-        "meta": run_metadata(settings, retrieval_mode="hybrid"),
+        "meta": {
+            **run_metadata(settings, retrieval_mode="hybrid"),
+            "live": live,
+            "tokens": {
+                "prompt_tokens": token_handler.prompt_tokens,
+                "completion_tokens": token_handler.completion_tokens,
+            },
+        },
         "candidate_status": candidate.status.value,
         "baseline_status": baseline.status.value,
         "generated_at": datetime.now(UTC).isoformat(),

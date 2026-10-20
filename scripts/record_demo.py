@@ -1,13 +1,22 @@
 """Record the README hero GIF: ask → answer → Prompts tab → diff → A/B → promote.
 
-Drives the same deterministic stub as ``ui_qa.py`` so the capture is
-reproducible offline. Playwright records ``webm``; the ffmpeg binary bundled
-with Playwright converts it to a paletted GIF at near-real-time pacing —
-every caption stays on screen long enough to be read.
+Two modes:
 
-    uv run python scripts/record_demo.py
+- **Fixture (default)** — the deterministic stub backend from ``ui_qa.py``,
+  so the capture is reproducible offline; the A/B numbers it shows are
+  fixture data, not a measurement.
+- **Live (``--live``)** — the real app end-to-end (real model calls, real
+  A/B engine, real promote); needs ``OPENAI_API_KEY`` and records real
+  numbers into ``evaluation/results/ab/``.
+
+    uv run python scripts/record_demo.py [--live]
+
+Playwright records ``webm``; a full ffmpeg (via ``imageio-ffmpeg``) converts
+it to a paletted GIF at near-real-time pacing — every caption stays on
+screen long enough to be read.
 """
 
+import argparse
 import contextlib
 import re
 import subprocess
@@ -19,11 +28,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from playwright.sync_api import sync_playwright  # noqa: E402
-from ui_qa import start_server  # noqa: E402
+import ui_qa  # noqa: E402  (import before _configure_env — it is env-inert)
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "screenshots" / "rag-demo.gif"
+OUT_LIVE = ROOT / "docs" / "screenshots" / "rag-demo-live.gif"
 
 
 def _ffmpeg() -> str:
@@ -52,9 +61,25 @@ def _black_lead(video: Path) -> float:
     return float(m.group(1)) if m else 0.0
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="real app + real model calls (needs OPENAI_API_KEY, real spend)",
+    )
+    return parser.parse_args()
+
+
 def record() -> None:
+    args = _parse_args()
+    ui_qa._configure_env(args.live)
+    from playwright.sync_api import sync_playwright
+
+    answer_wait = 120_000 if args.live else 30_000
+    ab_wait = 900_000 if args.live else 30_000
     with tempfile.TemporaryDirectory() as tmpdir:
-        base, server = start_server(Path(tmpdir))
+        base, server = ui_qa.start_server(Path(tmpdir), live=args.live)
         video_dir = Path(tmpdir) / "video"
         try:
             with sync_playwright() as pw:
@@ -74,11 +99,13 @@ def record() -> None:
                 page.fill("#question", "What is LangGraph?")
                 page.wait_for_timeout(2500)
                 page.press("#question", "Enter")
-                page.wait_for_selector("#answer:not(:empty)", timeout=30_000)
+                page.wait_for_selector(
+                    "#answer:not(:empty)", timeout=answer_wait
+                )
                 with contextlib.suppress(Exception):
                     page.wait_for_selector(
                         "#answer [role='status']", state="detached",
-                        timeout=30_000,
+                        timeout=answer_wait,
                     )
                 page.wait_for_timeout(8000)
 
@@ -94,13 +121,25 @@ def record() -> None:
                 page.locator("#prompt-diff").scroll_into_view_if_needed()
                 page.wait_for_timeout(8000)
 
-                # 3. New candidate → create v3.
+                # 3. New candidate → create v3 (the real hypothesis in live
+                # mode so the run is a genuine prompt change, not a copy).
                 page.click("text=New candidate")
                 page.wait_for_selector("#candidate-modal[open]", timeout=10_000)
                 page.wait_for_timeout(2500)
-                page.fill("#cand-author", "demo")
-                page.fill("#cand-description", "demo candidate")
-                page.fill("#cand-changelog", "readme hero demo")
+                if args.live:
+                    page.fill("#cand-system", ui_qa.LIVE_CANDIDATE["system"])
+                    page.fill("#cand-human", ui_qa.LIVE_CANDIDATE["human"])
+                    page.fill("#cand-author", ui_qa.LIVE_CANDIDATE["author"])
+                    page.fill(
+                        "#cand-description", ui_qa.LIVE_CANDIDATE["description"]
+                    )
+                    page.fill(
+                        "#cand-changelog", ui_qa.LIVE_CANDIDATE["changelog"]
+                    )
+                else:
+                    page.fill("#cand-author", "demo")
+                    page.fill("#cand-description", "demo candidate")
+                    page.fill("#cand-changelog", "readme hero demo")
                 page.wait_for_timeout(3000)
                 page.click("#cand-submit")
                 page.wait_for_selector(
@@ -111,20 +150,29 @@ def record() -> None:
                 # 4. A/B run → gate verdict — the scorecards are the densest
                 # text in the demo; give them the longest read beat.
                 page.click("text=Run A/B test")
-                page.wait_for_selector(".ab-verdict", timeout=30_000)
+                page.wait_for_selector(".ab-verdict", timeout=ab_wait)
                 page.locator("#prompt-ab").scroll_into_view_if_needed()
                 page.wait_for_timeout(9000)
 
-                # 5. Promote → v3 becomes live.
-                page.click("button:has-text('Promote')")
-                page.wait_for_selector("#confirm-modal[open]", timeout=10_000)
-                page.wait_for_timeout(2500)
-                page.click("#confirm-ok")
-                page.wait_for_selector(
-                    ".prompt-version:has-text('v3') .pill-accent",
-                    timeout=15_000,
+                # 5. Promote → v3 becomes live. In --live mode the gate
+                # verdict is real: promote only when the run was allowed —
+                # a blocked gate is honest evidence, not a skipped beat.
+                verdict_text = (
+                    page.locator(".ab-verdict").inner_text().lower()
                 )
-                page.wait_for_timeout(6000)
+                gate_allowed = "allow" in verdict_text
+                if not args.live or gate_allowed:
+                    page.click("button:has-text('Promote')")
+                    page.wait_for_selector(
+                        "#confirm-modal[open]", timeout=10_000
+                    )
+                    page.wait_for_timeout(2500)
+                    page.click("#confirm-ok")
+                    page.wait_for_selector(
+                        ".prompt-version:has-text('v3') .pill-accent",
+                        timeout=15_000,
+                    )
+                    page.wait_for_timeout(6000)
 
                 webm_path = Path(page.video.path())
                 ctx.close()
@@ -145,6 +193,7 @@ def record() -> None:
 
         palette = Path(tmpdir) / "palette.png"
         ffmpeg = _ffmpeg()
+        out = OUT_LIVE if args.live else OUT
         # Trim the dead black lead (browser launch before first paint) so the
         # GIF starts on the landing, not on a black screen.
         seek = ["-ss", f"{_black_lead(webm):.2f}"]
@@ -161,11 +210,11 @@ def record() -> None:
                 "-lavfi",
                 "setpts=1.0*PTS,fps=14,scale=960:-1:flags=lanczos [x]; "
                 "[x][1:v] paletteuse",
-                str(OUT),
+                str(out),
             ],
             check=True, capture_output=True,
         )
-        print(f"  {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB)")
+        print(f"  {out.relative_to(ROOT)} ({out.stat().st_size // 1024} KB)")
 
 
 if __name__ == "__main__":
