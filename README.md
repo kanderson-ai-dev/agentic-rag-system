@@ -639,6 +639,9 @@ can adapt this same project to your use case: your corpus, your vector/graph
 backends, your domain's guardrail rules, your evaluation thresholds. The
 architecture is deliberately built to be specialized, not just read.
 
+📩 [contact@kaarstenanderson.com](mailto:contact@kaarstenanderson.com)
+
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — © 2026 Kaarsten Anderson
+([contact@kaarstenanderson.com](mailto:contact@kaarstenanderson.com))

@@ -7,6 +7,10 @@ checklist for closing out each phase.
 > The repository is intended to be public. Never commit secrets; they live in
 > `.env` locally and in GitHub Actions Secrets in CI.
 
+**Reporting a vulnerability:** email
+[contact@kaarstenanderson.com](mailto:contact@kaarstenanderson.com) — please
+do not open a public issue for unpatched findings.
+
 ## OWASP Top 10 (Web, 2021)
 
 | Risk | Mitigation | Where |
