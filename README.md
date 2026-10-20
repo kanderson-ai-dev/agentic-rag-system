@@ -71,7 +71,7 @@ evidence — not just wire one up.
 - 🔓 **Open by design, auth when you need it** — the demo runs with zero
   credentials; JWT + bcrypt + rate-limited `/auth/login` are ready when the API
   needs protection.
-- 🧪 **CI green with zero secrets** — the suite (363 tests + 24 browser e2e,
+- 🧪 **CI green with zero secrets** — the suite (394 tests + 27 browser e2e,
   93% coverage on `app/`) runs fully offline with stubs; cloud-backed paths
   skip cleanly without credentials, so a fork clones and passes.
 
@@ -606,7 +606,23 @@ daily LLM budget gate, and CI that uses `pull_request` (never
   next).
 - A/B runs on an 18-case dataset produce real but **noisy** deltas — the gate
   requires threshold compliance plus no regression; a larger dataset would
-  tighten confidence intervals.
+  tighten confidence intervals. The iteration-2 evidence shows it plainly:
+  the same v3 candidate passed the gate once in four live runs.
+- The input guardrail is pattern/keyword-based (English-focused) — a
+  rephrased or non-English injection can pass it; the output guardrail and
+  judge limit the blast radius but a true semantic injection detector is a
+  next step.
+- The output guardrail replaces the **whole** answer with a refusal when a
+  secret/protected pattern matches — correct for real leaks, but a false
+  positive erases an otherwise good answer.
+- A `thread_id` is a bearer capability: anyone who learns it can resume that
+  conversation's review checkpoint. Threads should get an owner binding when
+  multi-user auth lands.
+- Session scoping on dashboards (`X-Session-Id`) is cooperative — the client
+  supplies it; it partitions the view, it is not a security boundary.
+- The rate limiter counts per client IP — behind a shared proxy/CDN it sees
+  one IP for many users (deploy behind a real `X-Forwarded-For` trust or a
+  dedicated limiter next).
 - RAGAS metrics are implemented via a self-contained LLM-as-judge (the `ragas`
   package is currently incompatible with LangChain 1.x).
 - Single-user authentication (no multi-tenant admin).
