@@ -13,7 +13,7 @@
 [![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)](https://mypy-lang.org/)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-![Landing answer, then the prompt-registry workflow (offline demo run on a deterministic stub backend)](docs/screenshots/rag-demo.gif)
+![Landing answer, then the prompt-registry workflow — a live run on the real app (real model calls; the A/B gate verdict shown is the actual measured outcome)](docs/screenshots/rag-demo-live.gif)
 
 </div>
 
@@ -31,11 +31,13 @@ This is the tier above a RAG demo: retrieval is hybrid (vector + graph),
 generation is graded against its own sources, low-confidence answers escalate
 to a human instead of hallucinating, and every number on this page is
 reproducible — `python evaluation/run_ragas.py` regenerates the scorecard.
-The Langfuse/LangSmith/scorecard captures come from live runs; the UI captures
-in `docs/ui-qa/` and the GIF above are produced offline by `scripts/ui_qa.py`
-and `scripts/record_demo.py` — the real UI and real graph edges served over a
-deterministic stub backend (fake chains, canned A/B result), so they are
-reproducible without API keys and never show live model output.
+The Langfuse/LangSmith/scorecard captures and the GIF above come from live
+runs — the clip was recorded with `scripts/record_demo.py --live` against the
+real app (real model calls, the actual measured A/B gate verdict, spend under
+the configured caps). The deterministic captures in `docs/ui-qa/` are produced
+offline by `scripts/ui_qa.py` — the real UI and real graph edges served over a
+stub backend — and `docs/ui-qa/live/` holds the same set captured live, so the
+two data sources never mix.
 
 It demonstrates that I can **operate** an agentic system with measurable
 evidence — not just wire one up.
