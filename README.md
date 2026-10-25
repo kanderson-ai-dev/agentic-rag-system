@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-async%20API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-agent%20orchestration-1C3C3C)](https://github.com/langchain-ai/langgraph)
 [![CI](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml/badge.svg)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-rag-system/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/badge/linting-ruff-red)](https://github.com/astral-sh/ruff)
 [![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)](https://mypy-lang.org/)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
@@ -74,7 +74,7 @@ evidence — not just wire one up.
   credentials; JWT + bcrypt + rate-limited `/auth/login` are ready when the API
   needs protection.
 - 🧪 **CI green with zero secrets** — the suite (394 tests + 27 browser e2e,
-  93% coverage on `app/`) runs fully offline with stubs; cloud-backed paths
+  95% coverage on `app/`) runs fully offline with stubs; cloud-backed paths
   skip cleanly without credentials, so a fork clones and passes.
 
 ---
@@ -242,7 +242,7 @@ retrieval, or the model change.
 | Cost | avg cost per query (`gpt-4o-mini`) | ≤ $0.01 | `usage_store` + `/api/v1/dashboard/performance` |
 | CI reliability | GitHub Actions build | green | `.github/workflows/ci.yml` |
 | Supply-chain security | `gitleaks` / `pip-audit` / CodeQL findings | 0 | CI |
-| Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 93%** | CI |
+| Test coverage | `pytest --cov` | ≥ 80% on `app/` — **measured: 95%** | CI |
 | Static typing | `mypy --strict` on `app/` | 0 errors | CI |
 
 ---
@@ -518,7 +518,7 @@ The image runs as a non-root user and injects secrets at runtime via `.env`.
 
 ```bash
 uv run pytest -v                      # core suite (no credentials required)
-uv run pytest --cov=app               # coverage report — 93% on app/ measured
+uv run pytest --cov=app               # coverage report — 95% on app/ measured
 uv run pytest -m e2e                  # browser-driven functional + content rules
                                       # (opt-in: playwright ships with `uv sync`;
                                       #  run `playwright install chromium` once)
