@@ -11,10 +11,13 @@ uv run uvicorn app.main:app --reload
 
 ## Conventions
 
-- Python ≥ 3.12, package manager `uv`. `requirements.txt` is generated, never
-  hand-edited: `uv export --no-hashes --no-dev --no-emit-project -o requirements.txt`
+- Python ≥ 3.12, package manager `uv`. `requirements.txt` and
+  `requirements-dev.txt` are generated, never hand-edited:
+  `uv export --no-hashes --no-dev --no-emit-project -o requirements.txt`
+  `uv export --no-hashes --only-dev --no-emit-project -o requirements-dev.txt`
   (the `--no-emit-project` flag keeps the `-e .` self-install out — the Docker build
-  installs the file before copying the source tree).
+  installs the file before copying the source tree; the dev export pins the CI
+  toolchain to `uv.lock`).
 - `ruff check .` must pass (line-length 100, rules `E,F,I,UP,B,SIM`, ignore `B008`).
 - `mypy --strict app/` must pass with 0 errors.
 - Tests must be deterministic and fully offline — no network, no real credentials.
