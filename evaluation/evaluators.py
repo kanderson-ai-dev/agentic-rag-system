@@ -12,6 +12,7 @@ from functools import lru_cache
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -100,7 +101,7 @@ def set_token_handler(handler: BaseCallbackHandler | None) -> None:
 
 
 @lru_cache
-def _get_llm():
+def _get_llm() -> BaseChatModel:
     from app.core.config import get_settings
     from app.services.llm import build_chat_model
 
