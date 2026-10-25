@@ -55,10 +55,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
+        # requirements-dev.txt is `uv export --only-dev` — tools stay pinned
+        # to uv.lock so CI runs the exact versions tested locally.
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx ruff mypy pytest-cov pip-audit
+          pip install -r requirements.txt -r requirements-dev.txt
       - name: Lint
         run: ruff check .
       - name: Type check
@@ -107,8 +108,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx playwright
+          pip install -r requirements.txt -r requirements-dev.txt
       - name: Install Chromium
         run: playwright install --with-deps chromium
       - name: Run e2e suite
