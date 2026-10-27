@@ -21,35 +21,52 @@ jobs:
       NEO4J_URI: ${{ secrets.NEO4J_URI }}
       NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
       NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+      # requirements.txt is exported with --no-emit-project: `app`/`evaluation`
+      # are not installed, so the scripts need the repo root on sys.path.
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check for evaluation credentials
+        id: check
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "OPENAI_API_KEY is not configured — skipping the live evaluation."
+          fi
+
       - name: Set up Python
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run the EDD scorecard (cost-capped)
+        if: steps.check.outputs.skip != 'true'
         run: python evaluation/run_ragas.py --max-cost-usd 0.50
 
       # Fails when a threshold regresses or the scorecard's recorded dataset /
       # prompt versions no longer match the repo's (stale = unverified claim).
       - name: Enforce EDD thresholds on the fresh scorecard
+        if: steps.check.outputs.skip != 'true'
         run: python evaluation/check_scorecard.py
 
       - name: Retrieval baselines (cost-capped)
+        if: steps.check.outputs.skip != 'true'
         run: >
           python evaluation/run_baseline.py
           --max-cost-usd 1.00
           --output evaluation/results/baseline_comparison.json
 
       - name: Upload evaluation artifacts
+        if: steps.check.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: evaluation-results
