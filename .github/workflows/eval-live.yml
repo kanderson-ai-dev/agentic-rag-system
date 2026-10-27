@@ -21,7 +21,6 @@ jobs:
       NEO4J_URI: ${{ secrets.NEO4J_URI }}
       NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
       NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
-      TRACING_PROVIDER: none
     steps:
       - name: Checkout
         uses: actions/checkout@v4
