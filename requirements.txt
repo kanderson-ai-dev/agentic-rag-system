@@ -179,7 +179,7 @@ langgraph-checkpoint-sqlite==3.1.1
     # via agentic-rag-system
 langgraph-prebuilt==1.1.0
     # via langgraph
-langgraph-sdk==0.4.4
+langgraph-sdk==0.4.14
     # via langgraph
 langsmith==0.13.0
     # via
@@ -207,7 +207,7 @@ numpy==2.5.3
     #   langchain-chroma
     #   langchain-pinecone
     #   onnxruntime
-oauthlib==4.0.0
+oauthlib==4.0.1
     # via requests-oauthlib
 onnxruntime==1.30.0
     # via chromadb
