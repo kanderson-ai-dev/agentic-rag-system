@@ -287,6 +287,13 @@ graph TD
     review -- retry --> retrieve
     review -- override --> output_guardrail[output_guardrail]
     generate --> output_guardrail --> END
+
+    registry[(prompt_registry<br/>promoted versions)]
+    registry -. grade_documents .-> grade
+    registry -. generate_answer .-> generate
+    registry -. transform_query .-> transform
+    registry -. protected texts .-> output_guardrail
+    ab[A/B gate + audit chain] -- promote / rollback --> registry
 ```
 
 - **Guardrail-first**: malicious input is blocked before it reaches retrieval
@@ -298,6 +305,9 @@ graph TD
 - **Human-in-the-loop**: when the correction loop exhausts its retries, the
   graph pauses via `interrupt()` and resumes with `Command(resume=...)` —
   approve, retry with a revised question, or override the answer manually.
+- **Versioned prompts**: every LLM node resolves its prompt from the Prompt
+  Registry at call time; promotions are gated by A/B scorecards and take
+  effect without a restart.
 
 ### Two frontend surfaces
 
